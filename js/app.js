@@ -11,21 +11,22 @@
 import {
   TrmError,
   getTrm,
+  getTrmMonth,
   toIsoDateBogota,
   usdToCopPesos,
 } from "./trm.js";
+import { computeMonth, factorForType } from "./rules.js";
 import {
-  computeMonth,
-  factorForType,
-  paramsForYear,
-} from "./rules.js";
-import {
+  MONTHS_ES,
   formatCop,
   formatUsd,
   formatYearMonth,
+  lastIsoOfMonth,
   parseCop,
   parseUsd,
+  previousYearMonth,
 } from "./format.js";
+import { hasOfficialSmmlv, loadYearParams } from "./gov.js";
 import * as store from "./store.js";
 
 /** @type {Record<WarningCode, string>} */
@@ -36,14 +37,16 @@ const WARNING_TEXT = {
 };
 
 /** @type {string} */
-let yearMonth = currentYearMonth();
+let yearMonth = previousYearMonth();
 /** @type {YearParams} */
-let params = paramsForYear(Number(yearMonth.slice(0, 4)));
+let params = loadYearParams(Number(yearMonth.slice(0, 4)));
 /** @type {IncomeSource[]} */
 let sources = [blankSource("honorarios")];
 
 const els = {
-  yearMonth: /** @type {HTMLInputElement} */ (document.querySelector("#year-month")),
+  year: /** @type {HTMLSelectElement} */ (document.querySelector("#year")),
+  month: /** @type {HTMLSelectElement} */ (document.querySelector("#month")),
+  govStatus: /** @type {HTMLElement} */ (document.querySelector("#gov-status")),
   sources: /** @type {HTMLElement} */ (document.querySelector("#sources")),
   addSource: /** @type {HTMLButtonElement} */ (document.querySelector("#add-source")),
   smmlv: /** @type {HTMLInputElement} */ (document.querySelector("#param-smmlv")),
@@ -61,22 +64,30 @@ const els = {
 
 init();
 
-function init() {
-  els.yearMonth.value = yearMonth;
-  fillParamsForm();
-  renderSources();
-  renderResults();
-  renderHistory();
-
-  els.yearMonth.addEventListener("change", onYearMonthChange);
+async function init() {
+  fillYearMonthSelects();
+  bindPeriodAndParams();
   els.addSource.addEventListener("click", () => {
     sources.push(blankSource("honorarios"));
     renderSources();
     renderResults();
   });
+  els.save.addEventListener("click", onSave);
+  els.copyPrevious.addEventListener("click", onCopyPrevious);
+  els.sources.addEventListener("click", onSourcesClick);
+  els.sources.addEventListener("change", onSourcesChange);
+  els.sources.addEventListener("input", onSourcesInput);
+  await loadPeriod({ resetSources: true });
+  await renderHistory();
+}
+
+function bindPeriodAndParams() {
+  els.year.addEventListener("change", () => void onPeriodChange());
+  els.month.addEventListener("change", () => void onPeriodChange());
   els.smmlv.addEventListener("change", () => {
     params.smmlv = parseCop(els.smmlv.value);
     els.smmlv.value = formatCop(params.smmlv);
+    void persistYearParams();
     renderResults();
   });
   els.factor.addEventListener("input", () => {
@@ -91,45 +102,169 @@ function init() {
         input.value = String(source.factor);
       }
     }
+    void persistYearParams();
     renderResults();
   });
   els.salud.addEventListener("input", () => {
     params.saludRate = Number(els.salud.value) || 0;
+    void persistYearParams();
     renderResults();
   });
   els.pension.addEventListener("input", () => {
     params.pensionRate = Number(els.pension.value) || 0;
+    void persistYearParams();
     renderResults();
   });
   els.arl.addEventListener("change", () => {
     params.arlClass = els.arl.value;
+    void persistYearParams();
     renderResults();
   });
   els.fspRate.addEventListener("input", () => {
     params.fspRate = Number(els.fspRate.value) || 0;
+    void persistYearParams();
     renderResults();
   });
-  els.save.addEventListener("click", onSave);
-  els.copyPrevious.addEventListener("click", onCopyPrevious);
-  els.sources.addEventListener("click", onSourcesClick);
-  els.sources.addEventListener("change", onSourcesChange);
-  els.sources.addEventListener("input", onSourcesInput);
 }
 
-async function onYearMonthChange() {
-  yearMonth = els.yearMonth.value || yearMonth;
+function fillYearMonthSelects() {
+  const today = toIsoDateBogota(new Date());
+  const currentYear = Number(today.slice(0, 4));
+  const prevYear = Number(yearMonth.slice(0, 4));
+  const maxYear = Math.max(currentYear, prevYear);
+  els.year.replaceChildren();
+  for (let year = 2020; year <= maxYear; year += 1) {
+    const option = document.createElement("option");
+    option.value = String(year);
+    option.textContent = String(year);
+    els.year.append(option);
+  }
+  els.month.replaceChildren();
+  for (const month of MONTHS_ES) {
+    const option = document.createElement("option");
+    option.value = month.value;
+    option.textContent = month.label;
+    els.month.append(option);
+  }
+  els.year.value = yearMonth.slice(0, 4);
+  els.month.value = yearMonth.slice(5, 7);
+}
+
+function readYearMonthFromSelects() {
+  return `${els.year.value}-${els.month.value}`;
+}
+
+async function onPeriodChange() {
+  yearMonth = readYearMonthFromSelects();
+  await loadPeriod({ resetSources: true });
+}
+
+/**
+ * @param {{ resetSources: boolean }} options
+ */
+async function loadPeriod(options) {
   const year = Number(yearMonth.slice(0, 4));
-  const saved = await store.getMonth(yearMonth);
-  if (saved) {
-    sources = saved.sources.map((row) => structuredClone(row));
-    params = structuredClone(saved.params);
+  setGovStatus("Cargando parámetros del año…");
+  if (options.resetSources) {
+    const saved = await store.getMonth(yearMonth);
+    if (saved) {
+      sources = saved.sources.map((row) => structuredClone(row));
+      params = structuredClone(saved.params);
+    } else {
+      params = await ensureYearParams(year);
+      sources = [blankSource("honorarios")];
+    }
   } else {
-    params = paramsForYear(year);
-    sources = [blankSource("honorarios")];
+    params = await ensureYearParams(year);
   }
   fillParamsForm();
   renderSources();
   renderResults();
+
+  setGovStatus("Descargando TRM del mes…");
+  try {
+    const days = await ensureTrmMonth(yearMonth);
+    await applyCachedTrmToSources();
+    renderSources();
+    renderResults();
+    const smmlvNote = hasOfficialSmmlv(year)
+      ? `SMMLV ${year} de decreto`
+      : `SMMLV ${year} (sin decreto en tabla; edítalo)`;
+    setGovStatus(`${smmlvNote}. ${days} día(s) de TRM en caché.`);
+  } catch (err) {
+    const extra = err instanceof TrmError ? ` ${trmErrorText(err)}` : "";
+    setGovStatus(`Parámetros del año en caché. No se pudo bajar la TRM del mes.${extra}`);
+  }
+}
+
+/**
+ * @param {number} year
+ * @returns {Promise<YearParams>}
+ */
+async function ensureYearParams(year) {
+  const cached = await store.getYearParams(year);
+  if (cached) {
+    return {
+      ...cached,
+      arlClass: params.arlClass,
+      fspRate: params.fspRate,
+      arlRates: cached.arlRates,
+    };
+  }
+  const loaded = loadYearParams(year);
+  loaded.arlClass = params.arlClass;
+  loaded.fspRate = params.fspRate;
+  await store.saveYearParams(year, loaded);
+  return loaded;
+}
+
+async function persistYearParams() {
+  params.year = Number(yearMonth.slice(0, 4));
+  await store.saveYearParams(params.year, params);
+}
+
+/**
+ * @param {string} monthKey
+ * @returns {Promise<number>}
+ */
+async function ensureTrmMonth(monthKey) {
+  const todayMonth = toIsoDateBogota(new Date()).slice(0, 7);
+  const already = await store.isTrmMonthLoaded(monthKey);
+  if (already && monthKey !== todayMonth) {
+    const existing = await store.listTrmsForMonth(monthKey);
+    return existing.length;
+  }
+  const byDate = await getTrmMonth(monthKey);
+  await store.putTrms(Object.values(byDate));
+  await store.markTrmMonthLoaded(monthKey);
+  return Object.keys(byDate).length;
+}
+
+async function applyCachedTrmToSources() {
+  for (const source of sources) {
+    if (source.currency !== "USD") continue;
+    if (!source.trmDate) source.trmDate = defaultTrmDate(yearMonth);
+    const quote = await store.getCachedTrm(source.trmDate);
+    if (!quote) continue;
+    source.trm = quote.value;
+    if (source.usd != null && source.trm > 0) {
+      source.amount = usdToCopPesos(source.usd, source.trm);
+    }
+  }
+}
+
+/**
+ * @param {string} monthKey
+ */
+function defaultTrmDate(monthKey) {
+  const today = toIsoDateBogota(new Date());
+  if (today.startsWith(`${monthKey}-`)) return today;
+  return lastIsoOfMonth(monthKey);
+}
+
+/** @param {string} text */
+function setGovStatus(text) {
+  els.govStatus.textContent = text;
 }
 
 async function onSave() {
@@ -228,7 +363,10 @@ function onSourcesInput(event) {
     if (source.trm) source.amount = usdToCopPesos(source.usd, source.trm);
     updateCopHint(article, source);
   }
-  if (field === "trmDate") source.trmDate = target.value;
+  if (field === "trmDate") {
+    source.trmDate = target.value;
+    void applyTrmDate(source, article);
+  }
   if (field === "trm") {
     source.trm = Number(target.value) || 0;
     if (source.usd != null && source.trm > 0) {
@@ -242,18 +380,50 @@ function onSourcesInput(event) {
 /**
  * @param {string} id
  */
+/**
+ * @param {IncomeSource} source
+ * @param {Element} article
+ */
+async function applyTrmDate(source, article) {
+  if (!source.trmDate) return;
+  const quote = await store.getCachedTrm(source.trmDate);
+  if (!quote) return;
+  source.trm = quote.value;
+  const trmInput = article.querySelector("[data-field=trm]");
+  if (trmInput instanceof HTMLInputElement) trmInput.value = String(quote.value);
+  if (source.usd != null && source.trm > 0) {
+    source.amount = usdToCopPesos(source.usd, source.trm);
+  }
+  updateCopHint(/** @type {HTMLElement} */ (article), source);
+  const status = article.querySelector(".trm-status");
+  if (status) status.textContent = `Caché ${quote.validFrom} – ${quote.validTo}`;
+  renderResults();
+}
+
 async function fetchTrm(id) {
   const source = sources.find((row) => row.id === id);
   const article = els.sources.querySelector(`[data-id="${id}"]`);
   if (!source || !article) return;
   const status = article.querySelector(".trm-status");
-  const date = source.trmDate || toIsoDateBogota(new Date());
+  const date = source.trmDate || defaultTrmDate(yearMonth);
   source.trmDate = date;
   const dateInput = article.querySelector("[data-field=trmDate]");
   if (dateInput instanceof HTMLInputElement) dateInput.value = date;
+  const cached = await store.getCachedTrm(date);
+  if (cached) {
+    source.trm = cached.value;
+    const trmInput = article.querySelector("[data-field=trm]");
+    if (trmInput instanceof HTMLInputElement) trmInput.value = String(cached.value);
+    if (source.usd != null) source.amount = usdToCopPesos(source.usd, source.trm);
+    updateCopHint(article, source);
+    if (status) status.textContent = `Caché ${cached.validFrom} – ${cached.validTo}`;
+    renderResults();
+    return;
+  }
   if (status) status.textContent = "Consultando TRM…";
   try {
     const quote = await getTrm(date);
+    await store.putTrms([quote]);
     source.trm = quote.value;
     const trmInput = article.querySelector("[data-field=trm]");
     if (trmInput instanceof HTMLInputElement) trmInput.value = String(quote.value);
@@ -474,12 +644,8 @@ function blankSource(type) {
     factor: factorForType(type, params),
     currency: type === "honorarios" ? "USD" : "COP",
     usd: type === "honorarios" ? 0 : undefined,
-    trmDate: toIsoDateBogota(new Date()),
+    trmDate: defaultTrmDate(yearMonth),
   };
-}
-
-function currentYearMonth() {
-  return toIsoDateBogota(new Date()).slice(0, 7);
 }
 
 /**

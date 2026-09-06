@@ -48,6 +48,7 @@ colombian-contractor/
     trm.test.js
     rules.test.js
     format.test.js
+    gov.test.js
   index.html          # shell; Pico + style.css + one module entry
   css/
     pico.min.css      # later — vendored Pico release (do not edit)
@@ -55,7 +56,8 @@ colombian-contractor/
   js/
     app.js            # UI; the only module that touches the DOM
     rules.js          # IBC + contributions (pure, COP)
-    trm.js            # official TRM for a date; USD → integer COP
+    trm.js            # official TRM for a date or a whole month; USD → integer COP
+    gov.js            # year params (SMMLV table + statutory rates); no extra hosts
     store.js          # persistence API + IndexedDB adapter
     format.js         # COP, year-month, display strings
 ```
@@ -77,6 +79,7 @@ index.html
     └── app.js
             ├── rules.js
             ├── trm.js
+            ├── gov.js → rules.js  (paramsForYear only)
             ├── store.js
             └── format.js
 ```
@@ -84,10 +87,12 @@ index.html
 Rules:
 
 1. **`rules.js` imports nothing** in this project (no `store`, no `format`, no `trm`, no DOM). It never sees USD.
-2. **`trm.js` imports nothing** from `rules` / `store` / `format`. It may `fetch` **only** the official TRM dataset. In-memory cache only — no IndexedDB.
+2. **`trm.js` imports nothing** from `rules` / `store` / `format`. It may `fetch` **only** the official TRM dataset. Module cache + `store` (via `app.js`) hold month TRMs so picking a month is one request.
+2b. **`gov.js`** may import `rules.js` for `paramsForYear`. It does **not** fetch MinTrabajo/BanRep (no CORS JSON for SMMLV or IBC rates). Year snapshots go through `store`.
 3. **`store.js` does not import `rules.js` or `trm.js`.** It persists inputs (and optional snapshots). Recalculation is `app` calling `rules` (and `trm` when a line is in USD).
 4. **`format.js` imports nothing** from `rules` / `store` / `trm`.
-5. **`app.js` is the only module that** queries the DOM, calls `store.*`, `rules.*`, and `trm.*`.
+5. **`app.js` is the only module that** queries the DOM, calls `store.*`, `rules.*`, `gov.*`, and `trm.*`.
+   Default period is the **previous** Bogotá month (PILA on last month’s income). Year dropdown loads/caches year params; month dropdown downloads that month’s TRMs once.
 6. No IndexedDB (or any storage API) outside `store.js`.
 7. Convert USD → COP **before** `rules`. Persist the TRM date, TRM value used, USD amount, and resulting COP when that lands in `MonthRecord` — do not re-fetch TRM to rewrite old months.
 

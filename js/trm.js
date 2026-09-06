@@ -93,24 +93,112 @@ export function quoteFromPayload(payload, isoDate) {
   if (payload.length === 0) {
     throw new TrmError("not_found", `No TRM published for ${isoDate}`);
   }
-  const row = payload[0];
-  if (row === null || typeof row !== "object") {
-    throw new TrmError("bad_response", "TRM row was not an object");
+  return quoteFromRow(payload[0], isoDate);
+}
+
+/**
+ * @param {string} yearMonth `YYYY-MM`
+ * @returns {{ start: string, end: string }}
+ */
+export function monthBounds(yearMonth) {
+  const year = Number(yearMonth.slice(0, 4));
+  const month = Number(yearMonth.slice(5, 7));
+  if (!/^\d{4}-\d{2}$/.test(yearMonth) || month < 1 || month > 12) {
+    throw new TrmError("bad_date", `Expected YYYY-MM, got ${JSON.stringify(yearMonth)}`);
   }
-  const record = /** @type {Record<string, unknown>} */ (row);
-  const value = Number(record.valor);
-  if (!Number.isFinite(value) || value <= 0) {
-    throw new TrmError("bad_response", `Invalid TRM valor: ${String(record.valor)}`);
-  }
-  const unit = typeof record.unidad === "string" && record.unidad ? record.unidad : "COP";
+  const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
   return {
-    date: isoDate,
-    value,
-    validFrom: timestampToIsoDate(record.vigenciadesde),
-    validTo: timestampToIsoDate(record.vigenciahasta),
-    unit,
-    source: TRM_SOURCE,
+    start: `${yearMonth}-01`,
+    end: `${yearMonth}-${String(last).padStart(2, "0")}`,
   };
+}
+
+/**
+ * @param {string} yearMonth
+ * @returns {string}
+ */
+export function trmMonthQueryUrl(yearMonth) {
+  const { start, end } = monthBounds(yearMonth);
+  const url = new URL(TRM_DATASET_URL);
+  url.searchParams.set(
+    "$where",
+    `vigenciahasta >= '${start}T00:00:00.000' AND vigenciadesde <= '${end}T00:00:00.000'`,
+  );
+  url.searchParams.set("$limit", "50");
+  url.searchParams.set("$order", "vigenciadesde ASC");
+  return url.href;
+}
+
+/**
+ * @param {unknown} payload
+ * @returns {TrmQuote[]}
+ */
+export function quotesFromMonthPayload(payload) {
+  if (!Array.isArray(payload)) {
+    throw new TrmError("bad_response", "TRM month response was not a JSON array");
+  }
+  return payload.map((row) => {
+    const quote = quoteFromRow(row, "2000-01-01");
+    return { ...quote, date: quote.validFrom };
+  });
+}
+
+/**
+ * One quote per calendar day in `yearMonth` using vigencia spans.
+ *
+ * @param {TrmQuote[]} quotes
+ * @param {string} yearMonth
+ * @returns {Record<string, TrmQuote>}
+ */
+export function trmByDateForMonth(quotes, yearMonth) {
+  const { start, end } = monthBounds(yearMonth);
+  /** @type {Record<string, TrmQuote>} */
+  const byDate = {};
+  for (const day of eachIsoDay(start, end)) {
+    const covering = quotes.find((quote) => quote.validFrom <= day && quote.validTo >= day);
+    if (covering) byDate[day] = { ...covering, date: day };
+  }
+  return byDate;
+}
+
+/**
+ * Download every TRM that covers days in `yearMonth` (one request).
+ *
+ * @param {string} yearMonth
+ * @param {GetTrmOptions} [options]
+ * @returns {Promise<Record<string, TrmQuote>>}
+ */
+export async function getTrmMonth(yearMonth, options = {}) {
+  const fetchFn = options.fetch ?? globalThis.fetch;
+  let response;
+  try {
+    response = await fetchFn(trmMonthQueryUrl(yearMonth), {
+      headers: { Accept: "application/json" },
+      signal: options.signal,
+    });
+  } catch (err) {
+    if (err instanceof TrmError) throw err;
+    const name = err && typeof err === "object" && "name" in err ? String(err.name) : "";
+    if (name === "AbortError") throw err;
+    throw new TrmError("network", "Could not reach datos.gov.co for monthly TRM", {
+      cause: err instanceof Error ? err : undefined,
+    });
+  }
+  if (!response.ok) {
+    throw new TrmError("network", `TRM month request failed (${response.status})`);
+  }
+  let payload;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new TrmError("bad_response", "TRM month response was not JSON");
+  }
+  const quotes = quotesFromMonthPayload(payload);
+  const byDate = trmByDateForMonth(quotes, yearMonth);
+  if (!options.skipCache) {
+    for (const [day, quote] of Object.entries(byDate)) cache.set(day, quote);
+  }
+  return byDate;
 }
 
 /**
@@ -177,6 +265,47 @@ export function usdToCopPesos(usd, trm) {
 
 export function clearTrmCache() {
   cache.clear();
+}
+
+/**
+ * @param {unknown} row
+ * @param {string} isoDate
+ * @returns {TrmQuote}
+ */
+function quoteFromRow(row, isoDate) {
+  if (row === null || typeof row !== "object") {
+    throw new TrmError("bad_response", "TRM row was not an object");
+  }
+  const record = /** @type {Record<string, unknown>} */ (row);
+  const value = Number(record.valor);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new TrmError("bad_response", `Invalid TRM valor: ${String(record.valor)}`);
+  }
+  const unit = typeof record.unidad === "string" && record.unidad ? record.unidad : "COP";
+  return {
+    date: isoDate,
+    value,
+    validFrom: timestampToIsoDate(record.vigenciadesde),
+    validTo: timestampToIsoDate(record.vigenciahasta),
+    unit,
+    source: TRM_SOURCE,
+  };
+}
+
+/**
+ * @param {string} start inclusive YYYY-MM-DD
+ * @param {string} end inclusive YYYY-MM-DD
+ * @returns {string[]}
+ */
+function eachIsoDay(start, end) {
+  const days = [];
+  const cursor = new Date(`${start}T00:00:00.000Z`);
+  const last = new Date(`${end}T00:00:00.000Z`);
+  while (cursor.getTime() <= last.getTime()) {
+    days.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return days;
 }
 
 /**

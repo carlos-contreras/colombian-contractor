@@ -4,8 +4,13 @@ import {
   TrmError,
   clearTrmCache,
   getTrm,
+  getTrmMonth,
+  monthBounds,
   quoteFromPayload,
+  quotesFromMonthPayload,
   toIsoDateBogota,
+  trmByDateForMonth,
+  trmMonthQueryUrl,
   trmQueryUrl,
   usdToCopPesos,
 } from "../js/trm.js";
@@ -121,4 +126,50 @@ test("getTrm maps HTTP failure to network", async () => {
   await assert.rejects(() => getTrm("2026-03-20", { fetch: fakeFetch }), (err) => {
     return err instanceof TrmError && err.code === "network";
   });
+});
+
+test("monthBounds and month query cover the whole month", () => {
+  assert.deepEqual(monthBounds("2026-08"), { start: "2026-08-01", end: "2026-08-31" });
+  const url = trmMonthQueryUrl("2026-08");
+  assert.match(url, /2026-08-01T00%3A00%3A00\.000/);
+  assert.match(url, /2026-08-31T00%3A00%3A00\.000/);
+});
+
+test("trmByDateForMonth expands vigencia spans to each day", () => {
+  const quotes = quotesFromMonthPayload([
+    {
+      valor: "3126.08",
+      unidad: "COP",
+      vigenciadesde: "2026-09-05T00:00:00.000",
+      vigenciahasta: "2026-09-08T00:00:00.000",
+    },
+  ]);
+  const byDate = trmByDateForMonth(quotes, "2026-09");
+  assert.equal(byDate["2026-09-06"].value, 3126.08);
+  assert.equal(byDate["2026-09-08"].value, 3126.08);
+  assert.equal(byDate["2026-09-04"], undefined);
+});
+
+test("getTrmMonth uses injected fetch once", async () => {
+  const payload = [
+    {
+      valor: "3144.14",
+      unidad: "COP",
+      vigenciadesde: "2026-08-01T00:00:00.000",
+      vigenciahasta: "2026-08-03T00:00:00.000",
+    },
+  ];
+  let calls = 0;
+  /** @type {typeof fetch} */
+  const fakeFetch = async () => {
+    calls += 1;
+    return new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  const byDate = await getTrmMonth("2026-08", { fetch: fakeFetch });
+  assert.equal(calls, 1);
+  assert.equal(byDate["2026-08-02"].value, 3144.14);
+  assert.equal(byDate["2026-08-04"], undefined);
 });

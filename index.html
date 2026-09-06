@@ -19,11 +19,23 @@
 
     <main>
       <section aria-labelledby="mes-titulo">
-        <h2 id="mes-titulo">Mes</h2>
-        <label>
-          Año y mes
-          <input id="year-month" type="month" required>
-        </label>
+        <h2 id="mes-titulo">Mes a liquidar</h2>
+        <p class="muted">
+          Se abre en el <strong>mes anterior</strong> (ingresos de ese mes para
+          pagar PILA). Al elegir el año se cargan SMMLV y tarifas; al elegir el
+          mes se descargan las TRM de todos los días.
+        </p>
+        <div class="grid-2">
+          <label>
+            Año
+            <select id="year"></select>
+          </label>
+          <label>
+            Mes
+            <select id="month"></select>
+          </label>
+        </div>
+        <p id="gov-status" class="muted" aria-live="polite"></p>
       </section>
 
       <section aria-labelledby="fuentes-titulo">
@@ -40,6 +52,11 @@
 
       <section aria-labelledby="params-titulo">
         <h2 id="params-titulo">Parámetros del año</h2>
+        <p class="muted">
+          SMMLV sale de la tabla de decretos; factor 40&nbsp;%, salud 12,5&nbsp;%
+          y pensión 16&nbsp;% son ley vigente (MinTrabajo no publica un JSON
+          abierto con CORS). Quedan en caché al elegir el año; puedes editarlos.
+        </p>
         <div class="grid-2">
           <label>
             SMMLV (COP)

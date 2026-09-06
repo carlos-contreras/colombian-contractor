@@ -4,8 +4,10 @@ import {
   formatCop,
   formatUsd,
   formatYearMonth,
+  lastIsoOfMonth,
   parseCop,
   parseUsd,
+  previousYearMonth,
 } from "../js/format.js";
 
 test("formatCop uses period thousands", () => {
@@ -32,4 +34,14 @@ test("formatUsd has two fraction digits", () => {
 test("formatYearMonth is Spanish", () => {
   assert.match(formatYearMonth("2026-09"), /septiembre/i);
   assert.match(formatYearMonth("2026-09"), /2026/);
+});
+
+test("previousYearMonth steps back one calendar month", () => {
+  assert.equal(previousYearMonth("2026-09"), "2026-08");
+  assert.equal(previousYearMonth("2026-01-15"), "2025-12");
+});
+
+test("lastIsoOfMonth", () => {
+  assert.equal(lastIsoOfMonth("2026-08"), "2026-08-31");
+  assert.equal(lastIsoOfMonth("2026-02"), "2026-02-28");
 });
