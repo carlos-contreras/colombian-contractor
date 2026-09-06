@@ -43,6 +43,9 @@ colombian-contractor/
   PLAN.md
   TODOS.md
   ARCHITECTURE.md     # this file
+  package.json        # { "type": "module" }; no runtime dependencies
+  test/
+    trm.test.js       # node --test
   index.html          # shell; Pico + style.css + one module entry
   css/
     pico.min.css      # later — vendored Pico release (do not edit)
@@ -54,8 +57,6 @@ colombian-contractor/
     store.js          # persistence API + IndexedDB adapter
     format.js         # COP, year-month, display strings
 ```
-
-Later, optional: `js/rules.test.html` (or console asserts) importing `rules.js`. No test runner in v1.
 
 `index.html` loads CSS then a single JS entry (relative URLs):
 
@@ -268,6 +269,26 @@ Pico does not replace `format.js` or any JS module.
 
 ---
 
+## Tests
+
+**Runner:** Node’s built-in `node --test` (`node:test` + `node:assert/strict`). No Jest, Vitest, or other npm packages.
+
+`package.json` exists only so ES modules resolve (`"type": "module"`) and so `npm test` runs `node --test`. It is not an application manifest and does not add a bundler.
+
+```bash
+node --test
+```
+
+Rules:
+
+1. Tests live in `test/*.test.js` and **import** `js/*.js`. Do not duplicate logic in the test tree.
+2. Unit tests **must not** call datos.gov.co. `getTrm` accepts `options.fetch` for a fake.
+3. Do not live-fetch TRM in the default suite (flaky, needs network). Integration against the real API is optional and separate if we add it later.
+4. `rules.js` tests (when that file exists) are the important ones — money math.
+5. Do not link `test/` from `index.html`. GitHub Pages must not run the suite.
+
+---
+
 ## GitHub Pages (optional deploy)
 
 The v1 stack is a static site. GitHub Pages can host it **without changing modules, JSDoc, or IndexedDB.** No Action build is required: publish the repo (or `/docs`) as-is.
@@ -309,6 +330,7 @@ Do not add these without updating this file:
 - Bundler (Vite, esbuild, webpack)
 - TypeScript compilation
 - UI framework
+- Jest, Vitest, Mocha, or any npm test runner (`node --test` only)
 - Tailwind, Bootstrap, or a second CSS framework (Pico is the base)
 - `rules.js` depending on storage or the DOM
 - SQLite, WASM SQLite, PocketBase, or any local app server

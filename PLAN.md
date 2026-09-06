@@ -132,6 +132,8 @@ colombian-contractor/
   PLAN.md
   TODOS.md            # deferred persistence (JSON archive, store API, SQLite, public)
   ARCHITECTURE.md     # modules, types, store boundary
+  package.json        # { "type": "module" }; node --test — no runtime deps
+  test/trm.test.js
   index.html          # later — Pico + style.css + script type="module" src="js/app.js"
   css/
     pico.min.css      # later — vendored Pico (do not edit)
@@ -144,9 +146,9 @@ colombian-contractor/
     format.js         # later — COP / dates
 ```
 
-- No bundler, no npm, no UI framework, no `tsc` for v1.
+- No bundler, no npm packages, no UI framework, no `tsc` for v1.
 - ES modules need HTTP (`python -m http.server`), not `file://`.
-- Small functions, testable by hand; optional later: a few pure-function checks in a `js/rules.test.html` or console asserts.
+- Unit tests: `node --test` (see [ARCHITECTURE.md](./ARCHITECTURE.md)).
 - Accessibility: labels on inputs, keyboard-usable.
 
 ## Phases
@@ -159,6 +161,7 @@ colombian-contractor/
 - [x] Persistence: v1 = IndexedDB; later work in TODOS.md
 - [x] TODOS.md (JSON archive, store API, no SQLite in v1, public SQLite/Postgres)
 - [x] ARCHITECTURE.md (ES modules + JSDoc, Pico.css)
+- [x] Unit tests: `node --test` (`test/trm.test.js`)
 - [ ] Research checkpoint: answer the six open questions and write them into `rules` notes
 
 ### Phase 1 — Static calculator

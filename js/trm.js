@@ -20,6 +20,7 @@
  * @typedef {object} GetTrmOptions
  * @property {AbortSignal} [signal]
  * @property {boolean} [skipCache]
+ * @property {typeof fetch} [fetch]  Injected for tests; default `globalThis.fetch`
  */
 
 export const TRM_DATASET_URL = "https://www.datos.gov.co/resource/32sa-8pi3.json";
@@ -125,9 +126,10 @@ export async function getTrm(date, options = {}) {
     return /** @type {TrmQuote} */ (cache.get(isoDate));
   }
 
+  const fetchFn = options.fetch ?? globalThis.fetch;
   let response;
   try {
-    response = await fetch(trmQueryUrl(isoDate), {
+    response = await fetchFn(trmQueryUrl(isoDate), {
       headers: { Accept: "application/json" },
       signal: options.signal,
     });

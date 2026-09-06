@@ -31,6 +31,14 @@ python -m http.server 8000
 
 Then open `http://localhost:8000`. That is a static file server, not an application backend.
 
+## Test
+
+Node’s built-in runner (no extra packages):
+
+```bash
+node --test
+```
+
 The same files can be served as a **GitHub Pages** site later (no bundler). IndexedDB will not follow you from localhost onto `*.github.io` — use JSON export/import. Details: [ARCHITECTURE.md](./ARCHITECTURE.md#github-pages-optional-deploy).
 
 ## Legal note
