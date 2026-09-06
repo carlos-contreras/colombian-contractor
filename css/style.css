@@ -1,0 +1,95 @@
+/* Pico.css v2.1.1 classless is css/pico.min.css — do not edit that file.
+   See css/PICO-LICENSE. This file is project layout only. */
+
+:root {
+  --app-max: 52rem;
+}
+
+body > header,
+body > main,
+body > footer {
+  width: min(100%, var(--app-max));
+  margin-inline: auto;
+  padding-inline: 1rem;
+}
+
+body > header {
+  padding-top: 2rem;
+}
+
+body > footer {
+  padding-bottom: 2rem;
+}
+
+.muted {
+  color: var(--pico-muted-color, #5d6b73);
+}
+
+.grid-2 {
+  display: grid;
+  gap: 0 1rem;
+}
+
+@media (min-width: 36rem) {
+  .grid-2 {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.source {
+  border: 1px solid var(--pico-muted-border-color, #d1d5d8);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.source header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.source header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.money {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.explain {
+  margin: 0.15rem 0 0;
+  font-size: 0.875rem;
+  color: var(--pico-muted-color, #5d6b73);
+}
+
+.warnings {
+  padding: 0.75rem 1rem;
+  border-left: 4px solid #c45c26;
+  background: #fff6ee;
+  margin-bottom: 1rem;
+}
+
+.warnings p {
+  margin: 0.25rem 0;
+}
+
+.trm-status {
+  font-size: 0.875rem;
+}
+
+button.secondary {
+  background: transparent;
+  border: 1px solid var(--pico-muted-border-color, #d1d5d8);
+  color: inherit;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}

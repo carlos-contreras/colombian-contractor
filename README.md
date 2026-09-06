@@ -2,7 +2,7 @@
 
 A local web app to calculate **IBC (Ingreso Base de Cotización)** each month from all sources of income, so Colombian independent contractors can see what they should report and contribute for social security.
 
-This is a personal planning-stage project. There is no application UI yet.
+Phase 1 scaffold: open the static page locally (see Run). Persistence is still in-memory until IndexedDB.
 
 ## Goal
 
@@ -19,9 +19,9 @@ Vanilla **HTML**, **Pico.css** + `css/style.css`, and **JavaScript ES modules** 
 
 ## Status
 
-Planning only. See [PLAN.md](./PLAN.md) for scope and phases, [ARCHITECTURE.md](./ARCHITECTURE.md) for module layout, and [TODOS.md](./TODOS.md) for deferred persistence work.
+Phase 1 scaffold (calculator UI + in-memory store). See [PLAN.md](./PLAN.md), [ARCHITECTURE.md](./ARCHITECTURE.md), and [TODOS.md](./TODOS.md).
 
-## Run (later)
+## Run
 
 ES modules cannot load from `file://`. From this folder:
 

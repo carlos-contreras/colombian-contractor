@@ -45,7 +45,9 @@ colombian-contractor/
   ARCHITECTURE.md     # this file
   package.json        # { "type": "module" }; no runtime dependencies
   test/
-    trm.test.js       # node --test
+    trm.test.js
+    rules.test.js
+    format.test.js
   index.html          # shell; Pico + style.css + one module entry
   css/
     pico.min.css      # later — vendored Pico release (do not edit)
@@ -174,7 +176,7 @@ Honorarios paid in USD still feed IBC in **COP**. This module is the only allowe
 
 - Dataset: `https://www.datos.gov.co/resource/32sa-8pi3.json` (CORS `*`, fine on Pages).
 - TRM rows have `vigenciadesde`–`vigenciahasta` (weekends/holidays reuse the last published rate).
-- `not_found` if the series has no row yet (future date, lag). **UI must allow a manual TRM** so offline / failed fetch still works — not implemented until the form exists.
+- `not_found` if the series has no row yet (future date, lag). The month form allows a **manual TRM** when fetch fails or the user is offline.
 - Which date (invoice vs payment vs other) is **not** decided here; the caller passes it.
 - This is a data lookup, not tax advice.
 

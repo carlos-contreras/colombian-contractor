@@ -166,9 +166,11 @@ colombian-contractor/
 
 ### Phase 1 — Static calculator
 
-- Month + sources form
-- IBC and contribution results
-- Hard-coded year parameters (editable in the UI)
+- [x] Scaffold: `index.html`, Pico, `app.js` / `rules.js` / `format.js` / in-memory `store.js`
+- [x] Month + sources form (USD + TRM or COP)
+- [x] IBC and contribution results
+- [x] Hard-coded year parameters (editable in the UI)
+- [ ] Confirm research checkpoint before trusting the numbers
 
 ### Phase 2 — Persistence and history
 
