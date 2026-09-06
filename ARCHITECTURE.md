@@ -12,7 +12,8 @@ The work is a monthly calculator with a replaceable store, not a component tree.
 
 | Layer | Lives in | Framework / TS value |
 | --- | --- | --- |
-| IBC + contribution math | `js/rules.js` | None — pure functions |
+| IBC + contribution math | `js/rules.js` | None — pure functions, **COP only** |
+| USD → COP | `js/trm.js` | Official TRM lookup + `usdToCopPesos` |
 | Persistence | `js/store.js` | None — IndexedDB behind an API |
 | COP / dates | `js/format.js` | None |
 | Month form + results | `js/app.js` | Low for v1 (one view + history) |
@@ -48,7 +49,8 @@ colombian-contractor/
     style.css         # later — layout and project overrides only
   js/
     app.js            # UI; the only module that touches the DOM
-    rules.js          # IBC + contributions (pure)
+    rules.js          # IBC + contributions (pure, COP)
+    trm.js            # official TRM for a date; USD → integer COP
     store.js          # persistence API + IndexedDB adapter
     format.js         # COP, year-month, display strings
 ```
@@ -71,17 +73,20 @@ Later, optional: `js/rules.test.html` (or console asserts) importing `rules.js`.
 index.html
     └── app.js
             ├── rules.js
+            ├── trm.js
             ├── store.js
             └── format.js
 ```
 
 Rules:
 
-1. **`rules.js` imports nothing** in this project (no `store`, no `format`, no DOM).
-2. **`store.js` does not import `rules.js`.** It persists inputs (and optional snapshots). Recalculation is `app` calling `rules`.
-3. **`format.js` imports nothing** from `rules` / `store`.
-4. **`app.js` is the only module that** queries the DOM, calls `store.*`, and calls `rules.*`.
-5. No IndexedDB (or any storage API) outside `store.js`.
+1. **`rules.js` imports nothing** in this project (no `store`, no `format`, no `trm`, no DOM). It never sees USD.
+2. **`trm.js` imports nothing** from `rules` / `store` / `format`. It may `fetch` **only** the official TRM dataset. In-memory cache only — no IndexedDB.
+3. **`store.js` does not import `rules.js` or `trm.js`.** It persists inputs (and optional snapshots). Recalculation is `app` calling `rules` (and `trm` when a line is in USD).
+4. **`format.js` imports nothing** from `rules` / `store` / `trm`.
+5. **`app.js` is the only module that** queries the DOM, calls `store.*`, `rules.*`, and `trm.*`.
+6. No IndexedDB (or any storage API) outside `store.js`.
+7. Convert USD → COP **before** `rules`. Persist the TRM date, TRM value used, USD amount, and resulting COP when that lands in `MonthRecord` — do not re-fetch TRM to rewrite old months.
 
 If a new file appears, it must sit on this graph without cycles. Shared constants that are not rules (e.g. `YYYY-MM` regex) can live in `format.js` or a tiny `js/ids.js` later — not in `app.js` copies.
 
@@ -152,6 +157,25 @@ Sketch (names can tighten when research lands; fields should not fork in `app.js
 ```
 
 Legal rates and the 40% rule are still **research-open** ([PLAN.md](./PLAN.md)). Types stay; numeric defaults live in one place in `rules.js` with comments pointing at the decision.
+
+---
+
+## `trm.js` — official TRM (USD → COP)
+
+Honorarios paid in USD still feed IBC in **COP**. This module is the only allowed network call in v1.
+
+| Export | Role |
+| --- | --- |
+| `getTrm(date)` | TRM that applies on that **America/Bogotá** calendar day |
+| `usdToCopPesos(usd, trm)` | `Math.round(usd * trm)` → integer pesos |
+| `toIsoDateBogota(input)` | `YYYY-MM-DD` from a string or `Date` |
+| `TrmError` | `bad_date` / `not_found` / `network` / `bad_response` / `bad_amount` |
+
+- Dataset: `https://www.datos.gov.co/resource/32sa-8pi3.json` (CORS `*`, fine on Pages).
+- TRM rows have `vigenciadesde`–`vigenciahasta` (weekends/holidays reuse the last published rate).
+- `not_found` if the series has no row yet (future date, lag). **UI must allow a manual TRM** so offline / failed fetch still works — not implemented until the form exists.
+- Which date (invoice vs payment vs other) is **not** decided here; the caller passes it.
+- This is a data lookup, not tax advice.
 
 ---
 
@@ -256,6 +280,7 @@ The v1 stack is a static site. GitHub Pages can host it **without changing modul
 | Relative imports (`./rules.js`, `src="js/app.js"`) | Works |
 | IndexedDB via `store.js` | Works in each visitor’s browser |
 | JSON export/import | Works (download/upload) |
+| `getTrm()` → datos.gov.co | Works (CORS `*`); fails offline — manual TRM still required |
 
 ### What does not magically carry over
 
@@ -287,6 +312,7 @@ Do not add these without updating this file:
 - Tailwind, Bootstrap, or a second CSS framework (Pico is the base)
 - `rules.js` depending on storage or the DOM
 - SQLite, WASM SQLite, PocketBase, or any local app server
-- Network calls for money math or records
+- Network calls **other than** official TRM in `js/trm.js`
+- Feeding USD into `rules.js` without converting via TRM (or a manual rate) first
 
 JSON export, a different `store` adapter, and a public backend are persistence evolutions behind `store.js`, not a new UI architecture. See [TODOS.md](./TODOS.md).

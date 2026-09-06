@@ -15,7 +15,7 @@ Answer, for a given month:
 
 ## Stack
 
-Vanilla **HTML**, **Pico.css** + `css/style.css`, and **JavaScript ES modules** with **JSDoc**. No backend, no JS framework, no bundler, no TypeScript compile. v1 working data: **IndexedDB**. How modules fit together: [ARCHITECTURE.md](./ARCHITECTURE.md). Later persistence (JSON backups, `store` API, SQLite, public backend) is listed in [TODOS.md](./TODOS.md).
+Vanilla **HTML**, **Pico.css** + `css/style.css`, and **JavaScript ES modules** with **JSDoc**. No backend, no JS framework, no bundler, no TypeScript compile. v1 working data: **IndexedDB**. USD honorarios are converted with the official **TRM** (`js/trm.js`) before IBC math in COP. How modules fit together: [ARCHITECTURE.md](./ARCHITECTURE.md). Later persistence (JSON backups, `store` API, SQLite, public backend) is listed in [TODOS.md](./TODOS.md).
 
 ## Status
 

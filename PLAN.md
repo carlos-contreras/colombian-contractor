@@ -42,9 +42,9 @@ The UI must make **year parameters** explicit (SMMLV, rates, 40% factor) so they
 
 ## Income sources (v1)
 
-Each source has a type, a label, and a monthly amount.
+Each source has a type, a label, and a monthly amount **in COP** (IBC math never sees USD).
 
-1. **Honorarios / prestación de servicios** — 40% rule.
+1. **Honorarios / prestación de servicios** — 40% rule. Amount may be entered in **USD**; the UI converts with the official **TRM** for a caller-chosen date (`js/trm.js`) and then stores integer COP.
 2. **Salario** — 100% of salarial base (simple; no full nómina engine in v1).
 3. **Other independent income** — user-selectable IBC factor (default 40%), for cases that do not fit (1).
 
@@ -138,7 +138,8 @@ colombian-contractor/
     style.css         # later — project overrides
   js/
     app.js            # later — UI (no direct IndexedDB)
-    rules.js          # later — IBC + contributions (pure)
+    rules.js          # later — IBC + contributions (pure, COP)
+    trm.js            # TRM for a date; USD → integer COP
     store.js          # later — IndexedDB behind list/get/save/export/import
     format.js         # later — COP / dates
 ```
