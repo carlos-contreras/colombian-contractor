@@ -67,6 +67,16 @@ body > footer {
   color: var(--pico-muted-color, #5d6b73);
 }
 
+.legend {
+  grid-column: 1 / -1;
+  font-size: 0.875rem;
+  color: var(--pico-muted-color, #5d6b73);
+}
+
+.legend p {
+  margin: 0.25rem 0;
+}
+
 .warnings {
   padding: 0.75rem 1rem;
   border-left: 4px solid #c45c26;

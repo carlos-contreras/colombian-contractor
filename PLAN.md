@@ -24,7 +24,7 @@ Rules must be confirmed against current law before coding numbers. The **model**
 
 | Concept | Working rule (to verify) |
 | --- | --- |
-| Independent services / honorarios | IBC = **40%** of monthly honorarios (net of IVA if invoiced with IVA) |
+| Independent services / honorarios | **Sin** presunción de costos: IBC = **40%** (legal constant). **Con** presunción UGPP: IBC = 1 − costos presuntos of the chosen CIIU section (`js/ugpp.js`). Net of IVA if invoiced with IVA. |
 | Employment salary | IBC ≈ monthly salarial income (with extras that count as salarial) |
 | Mixed (salary + contracts) | Combine according to current rules; avoid double-counting; respect one IBC for the month |
 | Floor | IBC cannot be below **1 SMMLV** if contributions are due |
@@ -38,13 +38,13 @@ Rules must be confirmed against current law before coding numbers. The **model**
 - ARL: rate by risk class (I–V) × IBC
 - Optional later: caja de compensación, FSP (fondo de solidaridad pensional) above a threshold
 
-The UI must make **year parameters** explicit (SMMLV, rates, 40% factor) so they can be updated without rewriting logic.
+The UI must make **year parameters** explicit (SMMLV, salud, pensión, ARL) so they can be updated without rewriting logic. The 40% honorarios factor is **not** a year field; it is a constant unless a source uses UGPP presunción.
 
 ## Income sources (v1)
 
 Each source has a type, a label, and a monthly amount **in COP** (IBC math never sees USD).
 
-1. **Honorarios / prestación de servicios** — 40% rule. Amount may be entered in **USD**; the UI converts with the official **TRM** for a caller-chosen date (`js/trm.js`) and then stores integer COP.
+1. **Honorarios / prestación de servicios** — dropdown: sin presunción (IBC 40%) or con presunción de costos (activity dropdown, UGPP working table). Amount may be entered in **USD**; the UI converts with the official **TRM** (`js/trm.js`) and then stores integer COP.
 2. **Salario** — 100% of salarial base (simple; no full nómina engine in v1).
 3. **Other independent income** — user-selectable IBC factor (default 40%), for cases that do not fit (1).
 
@@ -62,9 +62,10 @@ Single-page app.
 
 **Month view**
 
-- Selector: year + month.
+- Separate **year** and **month** dropdowns. Default = **previous** Bogotá month (PILA on last month’s income).
+- Choosing a year loads/caches SMMLV + statutory rates (`js/gov.js`). Choosing a month prefetches that month’s TRMs once.
 - List of income sources for that month (add / edit / delete).
-- Parameters panel: SMMLV, IBC factor, contribution rates, ARL class, FSP threshold.
+- Parameters panel: SMMLV, salud, pensión, ARL class, FSP (no IBC factor here).
 - Results:
   - Gross income total
   - IBC per line
@@ -110,6 +111,7 @@ Open questions to resolve before locking formulas (research checkpoint):
 4. Does the 1 SMMLV floor apply when independent income is very small but salary already exists?
 5. Current SMMLV and rates for the target year (start with 2026, keep 2025 as a preset if useful).
 6. FSP brackets and whether to include them in v1.
+7. Confirm UGPP presunción percentages against the official 4-digit anexo (v1 uses CIIU **sections** as a working table).
 
 Until those are answered, the code should keep rules in a single `rules.js` with comments pointing at the decision. Types for those values live as JSDoc in the same file ([ARCHITECTURE.md](./ARCHITECTURE.md)).
 
@@ -120,7 +122,7 @@ Until those are answered, the code should keep rules in a single `rules.js` with
 - Mobile-friendly: phone use while invoicing is likely.
 - No dark-pattern chrome; a simple form + results table is enough.
 - CSS: **Pico.css** (vendored) + thin `css/style.css`. Semantic HTML; see [ARCHITECTURE.md](./ARCHITECTURE.md).
-- Show warnings: IBC at floor, IBC at ceiling, missing ARL class, rates year mismatch.
+- Show warnings: IBC at floor, IBC at ceiling, missing ARL class, missing UGPP activity.
 
 ## Technical plan
 
@@ -133,17 +135,18 @@ colombian-contractor/
   TODOS.md            # deferred persistence (JSON archive, store API, SQLite, public)
   ARCHITECTURE.md     # modules, types, store boundary
   package.json        # { "type": "module" }; node --test — no runtime deps
-  test/trm.test.js
-  index.html          # later — Pico + style.css + script type="module" src="js/app.js"
-  css/
-    pico.min.css      # later — vendored Pico (do not edit)
-    style.css         # later — project overrides
+  test/*.test.js
+  index.html
+  css/pico.min.css    # Pico 2.1.1 classless, vendored
+  css/style.css
   js/
-    app.js            # later — UI (no direct IndexedDB)
-    rules.js          # later — IBC + contributions (pure, COP)
-    trm.js            # TRM for a date; USD → integer COP
-    store.js          # later — IndexedDB behind list/get/save/export/import
-    format.js         # later — COP / dates
+    app.js            # UI (no direct IndexedDB)
+    rules.js          # IBC + contributions (pure, COP)
+    trm.js            # TRM for a date or a whole month
+    gov.js            # SMMLV decree table + statutory rates
+    ugpp.js           # 40% constant + presunción de costos
+    store.js          # in-memory now; IndexedDB in Phase 2
+    format.js         # COP / dates
 ```
 
 - No bundler, no npm packages, no UI framework, no `tsc` for v1.
@@ -169,8 +172,11 @@ colombian-contractor/
 - [x] Scaffold: `index.html`, Pico, `app.js` / `rules.js` / `format.js` / in-memory `store.js`
 - [x] Month + sources form (USD + TRM or COP)
 - [x] IBC and contribution results
-- [x] Hard-coded year parameters (editable in the UI)
+- [x] Hard-coded / table year parameters (editable in the UI)
+- [x] Honorarios: 40% constant or UGPP presunción de costos
+- [x] Previous month default; monthly TRM prefetch
 - [ ] Confirm research checkpoint before trusting the numbers
+- [ ] Replace UGPP section table with official anexo if required
 
 ### Phase 2 — Persistence and history
 

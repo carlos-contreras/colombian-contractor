@@ -14,18 +14,20 @@
  *
  * @typedef {"honorarios" | "salario" | "otro"} SourceType
  *
- * @typedef {"floor" | "ceiling" | "missing_arl"} WarningCode
+ * @typedef {"floor" | "ceiling" | "missing_arl" | "missing_ugpp_activity"} WarningCode
  *
  * @typedef {object} IncomeSource
  * @property {string} id
  * @property {SourceType} type
  * @property {string} label
  * @property {number} amount  Integer COP pesos (rules ignore USD fields)
- * @property {number} factor  1 for salario, independentFactor for honorarios, custom for otro
+ * @property {number} factor  1 salario; 0.4 honorarios sin presunción; 1−costos UGPP; custom otro
  * @property {"COP" | "USD"} [currency]
  * @property {number} [usd]
  * @property {string} [trmDate]
  * @property {number} [trm]
+ * @property {"sin" | "ugpp"} [presuncion]  Honorarios only
+ * @property {string} [ugppActivity]  CIIU section id when presuncion is ugpp
  *
  * @typedef {object} YearParams
  * @property {number} year
@@ -150,6 +152,13 @@ export function computeMonth(sources, params) {
   const arlRate = params.arlRates[params.arlClass];
   /** @type {WarningCode[]} */
   const warnings = [];
+  if (
+    sources.some(
+      (source) => source.type === "honorarios" && source.presuncion === "ugpp" && !source.ugppActivity,
+    )
+  ) {
+    warnings.push("missing_ugpp_activity");
+  }
   const hasArl = Number.isFinite(arlRate);
   const arl = hasArl ? Math.round(ibcFinal * /** @type {number} */ (arlRate)) : 0;
   if (!hasArl) warnings.push("missing_arl");

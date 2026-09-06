@@ -13,8 +13,10 @@ The work is a monthly calculator with a replaceable store, not a component tree.
 | Layer | Lives in | Framework / TS value |
 | --- | --- | --- |
 | IBC + contribution math | `js/rules.js` | None — pure functions, **COP only** |
+| Honorarios factor | `js/ugpp.js` | 40% constant or 1 − UGPP costos |
+| Year figures | `js/gov.js` | SMMLV table + statutory salud/pensión |
 | USD → COP | `js/trm.js` | Official TRM lookup + `usdToCopPesos` |
-| Persistence | `js/store.js` | None — IndexedDB behind an API |
+| Persistence | `js/store.js` | In-memory now; IndexedDB in Phase 2 |
 | COP / dates | `js/format.js` | None |
 | Month form + results | `js/app.js` | Low for v1 (one view + history) |
 | Look and form chrome | Pico.css + `css/style.css` | Pico is the base; we do not add Tailwind/Bootstrap |
@@ -49,6 +51,7 @@ colombian-contractor/
     rules.test.js
     format.test.js
     gov.test.js
+    ugpp.test.js
   index.html          # shell; Pico + style.css + one module entry
   css/
     pico.min.css      # later — vendored Pico release (do not edit)
@@ -58,6 +61,7 @@ colombian-contractor/
     rules.js          # IBC + contributions (pure, COP)
     trm.js            # official TRM for a date or a whole month; USD → integer COP
     gov.js            # year params (SMMLV table + statutory rates); no extra hosts
+    ugpp.js           # honorarios 40% constant + UGPP presunción de costos
     store.js          # persistence API + IndexedDB adapter
     format.js         # COP, year-month, display strings
 ```
@@ -80,6 +84,7 @@ index.html
             ├── rules.js
             ├── trm.js
             ├── gov.js → rules.js  (paramsForYear only)
+            ├── ugpp.js            # types only from rules.js (JSDoc)
             ├── store.js
             └── format.js
 ```
@@ -91,7 +96,7 @@ Rules:
 2b. **`gov.js`** may import `rules.js` for `paramsForYear`. It does **not** fetch MinTrabajo/BanRep (no CORS JSON for SMMLV or IBC rates). Year snapshots go through `store`.
 3. **`store.js` does not import `rules.js` or `trm.js`.** It persists inputs (and optional snapshots). Recalculation is `app` calling `rules` (and `trm` when a line is in USD).
 4. **`format.js` imports nothing** from `rules` / `store` / `trm`.
-5. **`app.js` is the only module that** queries the DOM, calls `store.*`, `rules.*`, `gov.*`, and `trm.*`.
+5. **`app.js` is the only module that** queries the DOM, calls `store.*`, `rules.*`, `gov.*`, `ugpp.*`, and `trm.*`.
    Default period is the **previous** Bogotá month (PILA on last month’s income). Year dropdown loads/caches year params; month dropdown downloads that month’s TRMs once.
 6. No IndexedDB (or any storage API) outside `store.js`.
 7. Convert USD → COP **before** `rules`. Persist the TRM date, TRM value used, USD amount, and resulting COP when that lands in `MonthRecord` — do not re-fetch TRM to rewrite old months.
@@ -124,7 +129,13 @@ Sketch (names can tighten when research lands; fields should not fork in `app.js
  * @property {SourceType} type
  * @property {string} label
  * @property {number} amount  COP pesos (integer)
- * @property {number} factor  1 for salario, 0.4 for honorarios, custom for otro
+ * @property {number} factor  written by app (`ugpp.syncSourceFactor`)
+ * @property {"COP" | "USD"} [currency]
+ * @property {number} [usd]
+ * @property {string} [trmDate]
+ * @property {number} [trm]
+ * @property {"sin" | "ugpp"} [presuncion]
+ * @property {string} [ugppActivity]
  *
  * @typedef {object} YearParams
  * @property {number} year
@@ -154,7 +165,7 @@ Sketch (names can tighten when research lands; fields should not fork in `app.js
  * @property {number} fsp
  * @property {number} totalContributions
  * @property {number} cashAfter
- * @property {string[]} warnings
+ * @property {("floor"|"ceiling"|"missing_arl"|"missing_ugpp_activity")[]} warnings
  *
  * @typedef {object} MonthRecord
  * @property {string} yearMonth  YYYY-MM
@@ -175,6 +186,7 @@ Honorarios paid in USD still feed IBC in **COP**. This module is the only allowe
 | Export | Role |
 | --- | --- |
 | `getTrm(date)` | TRM that applies on that **America/Bogotá** calendar day |
+| `getTrmMonth(yearMonth)` | All quotes covering that month (one request) |
 | `usdToCopPesos(usd, trm)` | `Math.round(usd * trm)` → integer pesos |
 | `toIsoDateBogota(input)` | `YYYY-MM-DD` from a string or `Date` |
 | `TrmError` | `bad_date` / `not_found` / `network` / `bad_response` / `bad_amount` |
@@ -184,6 +196,16 @@ Honorarios paid in USD still feed IBC in **COP**. This module is the only allowe
 - `not_found` if the series has no row yet (future date, lag). The month form allows a **manual TRM** when fetch fails or the user is offline.
 - Which date (invoice vs payment vs other) is **not** decided here; the caller passes it.
 - This is a data lookup, not tax advice.
+
+---
+
+## `ugpp.js` — honorarios factor
+
+`app.js` calls `syncSourceFactor` before `computeMonth`. `rules.js` does not import this file.
+
+- **Sin presunción:** `INDEPENDENT_IBC_FACTOR` = `0.4` (not a form field).
+- **Con presunción:** activity = CIIU **section**; IBC factor = `1 - costRate`. Working table, not the official 4-digit UGPP anexo.
+- Type **otro** still has a manual factor; **salario** is `1`.
 
 ---
 
@@ -206,7 +228,7 @@ total        = salud + pension + arl + fsp
 cashAfter    = grossTotal - total
 ```
 
-Default factors: honorarios `0.4`, salario `1.0`, otro = user factor (default `independentFactor`).
+Default factors: honorarios **40% constant** unless the source uses UGPP presunción de costos (`js/ugpp.js`, IBC = 1 − costos presuntos). Salario `1.0`. Otro = user factor.
 
 Every figure shown in the UI must be traceable to an input and a named value on `MonthResult` (or a per-line `SourceIbc`). Warnings (floor, ceiling, missing ARL class, year mismatch) are data on `MonthResult.warnings`, not ad-hoc strings only in the DOM.
 
@@ -214,7 +236,9 @@ Every figure shown in the UI must be traceable to an input and a named value on 
 
 ## `store.js` — persistence boundary
 
-v1 working storage: **IndexedDB**. The rest of the app never sees that.
+v1 **scaffold** storage: **in-memory** (`Map`). Same API as Phase 2; IndexedDB is the next adapter. The rest of the app never sees the engine.
+
+Also caches **year params** and **TRM by date** so year/month changes do not refetch.
 
 Minimum API (Phase 2; implement the interface with the first IndexedDB code — [TODOS.md](./TODOS.md) item 3):
 

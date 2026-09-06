@@ -15,7 +15,14 @@ import {
   toIsoDateBogota,
   usdToCopPesos,
 } from "./trm.js";
-import { computeMonth, factorForType } from "./rules.js";
+import { computeMonth } from "./rules.js";
+import {
+  DEFAULT_UGPP_ACTIVITY,
+  UGPP_ACTIVITIES,
+  activityExplain,
+  getUgppActivity,
+  syncSourceFactor,
+} from "./ugpp.js";
 import {
   MONTHS_ES,
   formatCop,
@@ -34,6 +41,7 @@ const WARNING_TEXT = {
   floor: "El IBC quedó en el mínimo (1 SMMLV). Confirma si aplica en tu caso.",
   ceiling: "El IBC quedó en el máximo (25 SMMLV).",
   missing_arl: "No hay tarifa ARL para la clase elegida.",
+  missing_ugpp_activity: "Elegiste presunción de costos: falta la actividad UGPP.",
 };
 
 /** @type {string} */
@@ -50,7 +58,6 @@ const els = {
   sources: /** @type {HTMLElement} */ (document.querySelector("#sources")),
   addSource: /** @type {HTMLButtonElement} */ (document.querySelector("#add-source")),
   smmlv: /** @type {HTMLInputElement} */ (document.querySelector("#param-smmlv")),
-  factor: /** @type {HTMLInputElement} */ (document.querySelector("#param-factor")),
   salud: /** @type {HTMLInputElement} */ (document.querySelector("#param-salud")),
   pension: /** @type {HTMLInputElement} */ (document.querySelector("#param-pension")),
   arl: /** @type {HTMLSelectElement} */ (document.querySelector("#param-arl")),
@@ -87,21 +94,6 @@ function bindPeriodAndParams() {
   els.smmlv.addEventListener("change", () => {
     params.smmlv = parseCop(els.smmlv.value);
     els.smmlv.value = formatCop(params.smmlv);
-    void persistYearParams();
-    renderResults();
-  });
-  els.factor.addEventListener("input", () => {
-    params.independentFactor = Number(els.factor.value) || 0;
-    for (const source of sources) {
-      if (source.type !== "otro") source.factor = factorForType(source.type, params);
-    }
-    for (const article of els.sources.querySelectorAll("article")) {
-      const source = sources.find((row) => row.id === article.dataset.id);
-      const input = article.querySelector("[data-field=factor]");
-      if (source && source.type !== "otro" && input instanceof HTMLInputElement) {
-        input.value = String(source.factor);
-      }
-    }
     void persistYearParams();
     renderResults();
   });
@@ -308,9 +300,6 @@ function onSourcesClick(event) {
     renderResults();
     return;
   }
-  if (target.matches("[data-trm]")) {
-    void fetchTrm(id);
-  }
 }
 
 /**
@@ -325,9 +314,34 @@ function onSourcesChange(event) {
 
   if (target.matches("[data-field=type]") && target instanceof HTMLSelectElement) {
     source.type = /** @type {SourceType} */ (target.value);
-    if (source.type !== "otro") source.factor = factorForType(source.type, params);
-    if (source.type === "salario") source.currency = "COP";
-    if (source.type === "honorarios" && !source.currency) source.currency = "USD";
+    if (source.type === "salario") {
+      source.currency = "COP";
+      source.presuncion = undefined;
+      source.ugppActivity = undefined;
+    }
+    if (source.type === "honorarios") {
+      if (!source.currency) source.currency = "USD";
+      source.presuncion = source.presuncion ?? "sin";
+    }
+    syncSourceFactor(source);
+    renderSources();
+    renderResults();
+    return;
+  }
+  if (target.matches("[data-field=presuncion]") && target instanceof HTMLSelectElement) {
+    source.presuncion = /** @type {"sin" | "ugpp"} */ (target.value);
+    if (source.presuncion === "ugpp" && !source.ugppActivity) {
+      source.ugppActivity = DEFAULT_UGPP_ACTIVITY;
+    }
+    if (source.presuncion === "sin") source.ugppActivity = undefined;
+    syncSourceFactor(source);
+    renderSources();
+    renderResults();
+    return;
+  }
+  if (target.matches("[data-field=ugppActivity]") && target instanceof HTMLSelectElement) {
+    source.ugppActivity = target.value;
+    syncSourceFactor(source);
     renderSources();
     renderResults();
     return;
@@ -336,11 +350,15 @@ function onSourcesChange(event) {
     source.currency = /** @type {"COP" | "USD"} */ (target.value);
     if (source.currency === "COP") {
       source.usd = undefined;
-    } else if (source.trm && source.usd) {
-      source.amount = usdToCopPesos(source.usd, source.trm);
+      renderSources();
+      renderResults();
+      return;
     }
+    if (!source.trmDate) source.trmDate = defaultTrmDate(yearMonth);
     renderSources();
-    renderResults();
+    const usdArticle = els.sources.querySelector(`[data-id="${source.id}"]`);
+    if (usdArticle) void applyTrmDate(source, usdArticle);
+    else renderResults();
   }
 }
 
@@ -378,16 +396,27 @@ function onSourcesInput(event) {
 }
 
 /**
- * @param {string} id
- */
-/**
  * @param {IncomeSource} source
  * @param {Element} article
  */
 async function applyTrmDate(source, article) {
   if (!source.trmDate) return;
-  const quote = await store.getCachedTrm(source.trmDate);
-  if (!quote) return;
+  const status = article.querySelector(".trm-status");
+  let quote = await store.getCachedTrm(source.trmDate);
+  if (!quote) {
+    if (status) status.textContent = "Buscando TRM…";
+    try {
+      quote = await getTrm(source.trmDate);
+      await store.putTrms([quote]);
+    } catch (err) {
+      const message =
+        err instanceof TrmError
+          ? trmErrorText(err)
+          : "No hay TRM en caché. Escríbela a mano.";
+      if (status) status.textContent = message;
+      return;
+    }
+  }
   source.trm = quote.value;
   const trmInput = article.querySelector("[data-field=trm]");
   if (trmInput instanceof HTMLInputElement) trmInput.value = String(quote.value);
@@ -395,51 +424,8 @@ async function applyTrmDate(source, article) {
     source.amount = usdToCopPesos(source.usd, source.trm);
   }
   updateCopHint(/** @type {HTMLElement} */ (article), source);
-  const status = article.querySelector(".trm-status");
-  if (status) status.textContent = `Caché ${quote.validFrom} – ${quote.validTo}`;
+  if (status) status.textContent = `TRM ${quote.validFrom} – ${quote.validTo}`;
   renderResults();
-}
-
-async function fetchTrm(id) {
-  const source = sources.find((row) => row.id === id);
-  const article = els.sources.querySelector(`[data-id="${id}"]`);
-  if (!source || !article) return;
-  const status = article.querySelector(".trm-status");
-  const date = source.trmDate || defaultTrmDate(yearMonth);
-  source.trmDate = date;
-  const dateInput = article.querySelector("[data-field=trmDate]");
-  if (dateInput instanceof HTMLInputElement) dateInput.value = date;
-  const cached = await store.getCachedTrm(date);
-  if (cached) {
-    source.trm = cached.value;
-    const trmInput = article.querySelector("[data-field=trm]");
-    if (trmInput instanceof HTMLInputElement) trmInput.value = String(cached.value);
-    if (source.usd != null) source.amount = usdToCopPesos(source.usd, source.trm);
-    updateCopHint(article, source);
-    if (status) status.textContent = `Caché ${cached.validFrom} – ${cached.validTo}`;
-    renderResults();
-    return;
-  }
-  if (status) status.textContent = "Consultando TRM…";
-  try {
-    const quote = await getTrm(date);
-    await store.putTrms([quote]);
-    source.trm = quote.value;
-    const trmInput = article.querySelector("[data-field=trm]");
-    if (trmInput instanceof HTMLInputElement) trmInput.value = String(quote.value);
-    if (source.usd != null) source.amount = usdToCopPesos(source.usd, source.trm);
-    updateCopHint(article, source);
-    if (status) {
-      status.textContent = `Vigente ${quote.validFrom} – ${quote.validTo}`;
-    }
-    renderResults();
-  } catch (err) {
-    const message =
-      err instanceof TrmError
-        ? trmErrorText(err)
-        : "No se pudo consultar la TRM. Escríbela a mano.";
-    if (status) status.textContent = message;
-  }
 }
 
 /**
@@ -454,7 +440,6 @@ function trmErrorText(err) {
 
 function fillParamsForm() {
   els.smmlv.value = formatCop(params.smmlv);
-  els.factor.value = String(params.independentFactor);
   els.salud.value = String(params.saludRate);
   els.pension.value = String(params.pensionRate);
   els.arl.value = params.arlClass;
@@ -473,7 +458,6 @@ function sourceArticle(source) {
   article.className = "source";
   article.dataset.id = source.id;
   const usd = source.currency === "USD";
-  const factorLocked = source.type !== "otro";
   article.innerHTML = `
     <header>
       <h3>${escapeHtml(source.label || labelForType(source.type))}</h3>
@@ -522,18 +506,23 @@ function sourceArticle(source) {
       </label>
       `
       }
-      <label>
+      ${honorariosFields(source)}
+      ${
+        source.type === "otro"
+          ? `<label>
         Factor IBC
-        <input data-field="factor" type="number" min="0" max="1" step="0.01" value="${source.factor}" ${factorLocked ? "readonly" : ""}>
-      </label>
+        <input data-field="factor" type="number" min="0" max="1" step="0.01" value="${source.factor}">
+      </label>`
+          : ""
+      }
     </div>
     ${
       usd
-        ? `<p class="toolbar"><button type="button" data-trm>Consultar TRM</button>
-           <span class="trm-status muted"></span></p>
-           <p class="explain cop-hint">${copHint(source)}</p>`
+        ? `<p class="explain cop-hint">${copHint(source)}</p>
+           <p class="trm-status muted"></p>`
         : ""
     }
+    ${honorariosExplain(source)}
   `;
   return article;
 }
@@ -558,6 +547,7 @@ function copHint(source) {
 }
 
 function renderResults() {
+  for (const source of sources) syncSourceFactor(source);
   const result = computeMonth(sources, params);
   if (result.warnings.length > 0) {
     els.warnings.className = "warnings";
@@ -636,16 +626,69 @@ async function renderHistory() {
  * @returns {IncomeSource}
  */
 function blankSource(type) {
-  return {
+  /** @type {IncomeSource} */
+  const source = {
     id: crypto.randomUUID(),
     type,
     label: "",
     amount: 0,
-    factor: factorForType(type, params),
+    factor: type === "salario" ? 1 : 0.4,
     currency: type === "honorarios" ? "USD" : "COP",
     usd: type === "honorarios" ? 0 : undefined,
     trmDate: defaultTrmDate(yearMonth),
+    presuncion: type === "honorarios" ? "sin" : undefined,
   };
+  syncSourceFactor(source);
+  return source;
+}
+
+/**
+ * @param {IncomeSource} source
+ */
+function honorariosFields(source) {
+  if (source.type !== "honorarios") return "";
+  const mode = source.presuncion === "ugpp" ? "ugpp" : "sin";
+  const activityOptions = UGPP_ACTIVITIES.map(
+    (row) =>
+      `<option value="${row.id}"${sel(source.ugppActivity === row.id)}>${escapeHtml(row.label)}</option>`,
+  ).join("");
+  return `
+      <label>
+        Presunción de costos
+        <select data-field="presuncion">
+          <option value="sin"${sel(mode === "sin")}>Sin presunción (IBC 40&nbsp;%)</option>
+          <option value="ugpp"${sel(mode === "ugpp")}>Con presunción de costos (UGPP)</option>
+        </select>
+      </label>
+      ${
+        mode === "ugpp"
+          ? `<label>
+        Actividad UGPP
+        <select data-field="ugppActivity">
+          ${activityOptions}
+        </select>
+      </label>`
+          : ""
+      }
+      <div class="legend">
+        <p><strong>Sin presunción:</strong> regla general del independiente. El IBC es el <strong>40&nbsp;%</strong> del ingreso (el 60&nbsp;% se trata como costo). Úsala si no aplicas tabla UGPP.</p>
+        <p><strong>Con presunción (UGPP):</strong> la UGPP presume un porcentaje de costos según la <strong>actividad</strong>. El IBC es lo que queda (100&nbsp;% − costos). Elige esto solo si vas a cotizar con esa tabla; después aparece la actividad.</p>
+      </div>`;
+}
+
+/**
+ * @param {IncomeSource} source
+ */
+function honorariosExplain(source) {
+  if (source.type !== "honorarios") return "";
+  if (source.presuncion === "ugpp") {
+    const activity = source.ugppActivity ? getUgppActivity(source.ugppActivity) : undefined;
+    if (!activity) {
+      return `<p class="explain">Elige la actividad para aplicar costos presuntos UGPP.</p>`;
+    }
+    return `<p class="explain">${escapeHtml(activityExplain(activity))}</p>`;
+  }
+  return `<p class="explain">Aplicando la regla general: IBC = 40&nbsp;% de este ingreso.</p>`;
 }
 
 /**
