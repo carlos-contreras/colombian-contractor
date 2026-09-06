@@ -15,11 +15,11 @@ Answer, for a given month:
 
 ## Stack
 
-Vanilla **HTML**, **CSS**, and **JavaScript**. No backend, no framework, no build step. Data stays in the browser (planned: `localStorage`).
+Vanilla **HTML**, **CSS**, and **JavaScript**. No backend, no framework, no build step. v1 working data: **IndexedDB**. Later persistence (JSON backups, `store` API, SQLite, public backend) is listed in [TODOS.md](./TODOS.md).
 
 ## Status
 
-Planning only. See [PLAN.md](./PLAN.md) for scope, calculation rules to implement, and delivery phases.
+Planning only. See [PLAN.md](./PLAN.md) for scope and phases, and [TODOS.md](./TODOS.md) for deferred persistence work.
 
 ## Run (later)
 
