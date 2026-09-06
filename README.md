@@ -15,15 +15,23 @@ Answer, for a given month:
 
 ## Stack
 
-Vanilla **HTML**, **CSS**, and **JavaScript**. No backend, no framework, no build step. v1 working data: **IndexedDB**. Later persistence (JSON backups, `store` API, SQLite, public backend) is listed in [TODOS.md](./TODOS.md).
+Vanilla **HTML**, **Pico.css** + `css/style.css`, and **JavaScript ES modules** with **JSDoc**. No backend, no JS framework, no bundler, no TypeScript compile. v1 working data: **IndexedDB**. How modules fit together: [ARCHITECTURE.md](./ARCHITECTURE.md). Later persistence (JSON backups, `store` API, SQLite, public backend) is listed in [TODOS.md](./TODOS.md).
 
 ## Status
 
-Planning only. See [PLAN.md](./PLAN.md) for scope and phases, and [TODOS.md](./TODOS.md) for deferred persistence work.
+Planning only. See [PLAN.md](./PLAN.md) for scope and phases, [ARCHITECTURE.md](./ARCHITECTURE.md) for module layout, and [TODOS.md](./TODOS.md) for deferred persistence work.
 
 ## Run (later)
 
-Once the app exists, open `index.html` in a browser. No server required.
+ES modules cannot load from `file://`. From this folder:
+
+```bash
+python -m http.server 8000
+```
+
+Then open `http://localhost:8000`. That is a static file server, not an application backend.
+
+The same files can be served as a **GitHub Pages** site later (no bundler). IndexedDB will not follow you from localhost onto `*.github.io` — use JSON export/import. Details: [ARCHITECTURE.md](./ARCHITECTURE.md#github-pages-optional-deploy).
 
 ## Legal note
 

@@ -111,7 +111,7 @@ Open questions to resolve before locking formulas (research checkpoint):
 5. Current SMMLV and rates for the target year (start with 2026, keep 2025 as a preset if useful).
 6. FSP brackets and whether to include them in v1.
 
-Until those are answered, the code should keep rules in a single `rules.js` (or equivalent) with comments pointing at the decision.
+Until those are answered, the code should keep rules in a single `rules.js` with comments pointing at the decision. Types for those values live as JSDoc in the same file ([ARCHITECTURE.md](./ARCHITECTURE.md)).
 
 ## UX / UI notes
 
@@ -119,25 +119,32 @@ Until those are answered, the code should keep rules in a single `rules.js` (or 
 - Format money as `$ 1.234.567` (COP, period thousands).
 - Mobile-friendly: phone use while invoicing is likely.
 - No dark-pattern chrome; a simple form + results table is enough.
+- CSS: **Pico.css** (vendored) + thin `css/style.css`. Semantic HTML; see [ARCHITECTURE.md](./ARCHITECTURE.md).
 - Show warnings: IBC at floor, IBC at ceiling, missing ARL class, rates year mismatch.
 
 ## Technical plan
+
+Vanilla **ES modules** + **JSDoc**. Details and dependency rules: [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 ```
 colombian-contractor/
   README.md
   PLAN.md
   TODOS.md            # deferred persistence (JSON archive, store API, SQLite, public)
-  index.html          # later
-  css/style.css       # later
+  ARCHITECTURE.md     # modules, types, store boundary
+  index.html          # later — Pico + style.css + script type="module" src="js/app.js"
+  css/
+    pico.min.css      # later — vendored Pico (do not edit)
+    style.css         # later — project overrides
   js/
     app.js            # later — UI (no direct IndexedDB)
-    rules.js          # later — IBC + contributions
+    rules.js          # later — IBC + contributions (pure)
     store.js          # later — IndexedDB behind list/get/save/export/import
     format.js         # later — COP / dates
 ```
 
-- No bundler, no npm required for v1.
+- No bundler, no npm, no UI framework, no `tsc` for v1.
+- ES modules need HTTP (`python -m http.server`), not `file://`.
 - Small functions, testable by hand; optional later: a few pure-function checks in a `js/rules.test.html` or console asserts.
 - Accessibility: labels on inputs, keyboard-usable.
 
@@ -150,6 +157,7 @@ colombian-contractor/
 - [x] PLAN.md
 - [x] Persistence: v1 = IndexedDB; later work in TODOS.md
 - [x] TODOS.md (JSON archive, store API, no SQLite in v1, public SQLite/Postgres)
+- [x] ARCHITECTURE.md (ES modules + JSDoc, Pico.css)
 - [ ] Research checkpoint: answer the six open questions and write them into `rules` notes
 
 ### Phase 1 — Static calculator
