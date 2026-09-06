@@ -27,16 +27,17 @@ Rules must be confirmed against current law before coding numbers. The **model**
 | Independent services / honorarios | **Sin** presunción de costos: IBC = **40%** (legal constant). **Con** presunción UGPP: IBC = 1 − costos presuntos of the chosen CIIU section (`js/ugpp.js`). Net of IVA if invoiced with IVA. |
 | Employment salary | IBC ≈ monthly salarial income (with extras that count as salarial) |
 | Mixed (salary + contracts) | Combine according to current rules; avoid double-counting; respect one IBC for the month |
-| Floor | IBC cannot be below **1 SMMLV** if contributions are due |
+| Rentas de capital | Several lines. **IBC = 40% of net** capital income (not 40% of gross, not factor 0). Net = gross − real costs **or** gross × (1 − **28.08%** presumed). See below. |
+| Floor | **1 SMMLV** when contributions are due. For *pure* rentista: due only if **net** ≥ 1 SMMLV; then IBC is at least 1 SMMLV even if 40% of net is lower. |
 | Ceiling | IBC cannot exceed **25 SMMLV** |
-| Month | Calendar month; contracts paid or accrued in that month (user chooses one convention and we document it) |
+| Month | Calendar month. Capital: **accrued** if required to keep books; **cash received** if not (Law 2277 art. 89). |
 
 **Contributions derived from IBC** (rates to confirm for the year):
 
 - Salud (independent): typically 12.5% of IBC
 - Pensión: typically 16% of IBC
 - ARL: rate by risk class (I–V) × IBC
-- Optional later: caja de compensación, FSP (fondo de solidaridad pensional) above a threshold
+- FSP (Fondo de Solidaridad Pensional): Ley 100 table on the combined pensión IBC (≥ 4 SMMLV). No manual rate.
 
 The UI must make **year parameters** explicit (SMMLV, salud, pensión, ARL) so they can be updated without rewriting logic. The 40% honorarios factor is **not** a year field; it is a constant unless a source uses UGPP presunción.
 
@@ -46,11 +47,28 @@ Each source has a type, a label, and a monthly amount **in COP** (IBC math never
 
 1. **Honorarios / prestación de servicios** — dropdown: sin presunción (IBC 40%) or con presunción de costos (activity dropdown, UGPP working table). Amount may be entered in **USD**; the UI converts with the official **TRM** (`js/trm.js`) and then stores integer COP.
 2. **Salario** — 100% of salarial base (simple; no full nómina engine in v1).
-3. **Other independent income** — user-selectable IBC factor (default 40%), for cases that do not fit (1).
+3. **Rentas de capital** — **several lines per month** (arrendamiento, dividendos, intereses / CDT / fondos, otra). PILA IBC for *rentista de capital*, **not** the declaración de renta. Formula and options below. If a “renta” is really explotación / prestación de servicios, it belongs in honorarios, not here.
+4. **Other independent income** — user-selectable IBC factor (default 40%), for cases that do not fit (1)–(3).
+
+### Rentas de capital — IBC (working model)
+
+PILA / salud y pensión. **Not** cédula de rentas de capital. Refs to confirm in code comments: Law 100 arts. 13, 15, 18; Law 797/2003; Law 2277/2022 art. 89; Decree 780/2016 art. 3.2.7.5 as amended by Decree 379/2026; UGPP ABC Rentistas de capital; UGPP Resolution 532/2024 (presumed-cost table, last row); ET art. 107; Council of State Section Four rad. 30596 (19 Mar 2026).
+
+1. **Who:** natural person with returns on capital (interest, CDTs, bonds, funds, rentals, dividends, similar).
+2. **Duty:** contribute when **monthly net** ≥ 1 SMMLV.
+3. **When to count the peso:** books required → **accrued** (dividends when credited/payable); books not required → **cash received**; voluntary books → choose and document.
+4. **Formula (per stream, then sum):** gross (no VAT) → minus costs (5 or 6) → net → **IBC = 40% × net** → floor/ceiling (7).
+5. **Real costs:** ET art. 107 (causal, necessary, proportional) with invoice/equivalent. Rentals e.g. admin commission, predial on that asset, mortgage **interest** (not principal), maintenance, HOA, insurance.
+6. **Presumed costs (rentista line, not CIIU):** **28.08%** of gross without VAT. `net = gross × (1 − 0.2808)`; `IBC = net × 40%`. Older 27.5% (Decree 1601/2022 / Res. 209/2020) is the prior scheme — do not use unless viewing an old year.
+7. **Floor/ceiling:** min 1 SMMLV, max 25 SMMLV. If 40% of net < 1 SMMLV **but** net ≥ 1 SMMLV → still IBC 1 SMMLV. If net < 1 SMMLV → **no obligation** (voluntary only).
+8. **Rates:** salud 12.5%, pensión 16% of IBC. ARL only if affiliated by activity/risk; many pure rentistas do not.
+9. **Several streams:** depurate each (arriendo vs CDT vs dividends, or capital vs honorarios), then combine nets; 40% is linear so per-line 40% of net then sum is the same. Capital uses the **rentista** coefficient, not a CIIU section from `ugpp.js`.
+10. **Tax return vs IBC:** the declaración is not the IBC, but if UGPP uses return income it must also use that return’s costs (indivisible evidence).
+11. **Out of this IBC:** wages (employee IBC), VAT, loan principal repaid, personal living costs with no link to the capital asset.
 
 Out of v1 (document, do not build yet):
 
-- Rentas de capital / dividends as IBC (usually not)
+- Full cédula de rentas de capital / declaración de renta engine (this app is IBC + aportes)
 - Full prestaciones, auxilio de transporte, non-salarial benefits
 - PILA form filling / operator integration
 - Multi-year tax projection
@@ -65,7 +83,7 @@ Single-page app.
 - Separate **year** and **month** dropdowns. Default = **previous** Bogotá month (PILA on last month’s income).
 - Choosing a year loads/caches SMMLV + statutory rates (`js/gov.js`). Choosing a month prefetches that month’s TRMs once.
 - List of income sources for that month (add / edit / delete).
-- Parameters panel: SMMLV, salud, pensión, ARL class, FSP (no IBC factor here).
+- Parameters panel: SMMLV, salud, pensión, ARL class (FSP is automatic on the combined pensión IBC).
 - Results:
   - Gross income total
   - IBC per line
@@ -84,10 +102,20 @@ Single-page app.
 
 ## Calculation sketch (v1)
 
-For each source `i`:
+Honorarios / salario / otro:
 
 ```
 ibc_i = amount_i * factor_i
+```
+
+Rentas de capital (each line):
+
+```
+gross_i  = amount_i                    # no VAT
+costs_i  = real_costs_i                # option A
+         | amount_i * 0.2808           # option B, Res. 532/2024
+net_i    = gross_i - costs_i
+ibc_i    = net_i * 0.40
 ```
 
 Then:
@@ -95,7 +123,8 @@ Then:
 ```
 ibc_raw      = sum(ibc_i)
 ibc_capped   = min(ibc_raw, 25 * SMMLV)
-ibc_final    = ibc_raw == 0 ? 0 : max(ibc_capped, 1 * SMMLV)   # confirm: floor when there is activity
+# honorarios-style floor (activity) vs rentista floor (only if capital net ≥ 1 SMMLV): mixed month is open question 8
+ibc_final    = … floor/ceiling …
 salud        = ibc_final * salud_rate
 pension      = ibc_final * pension_rate
 arl          = ibc_final * arl_rate[class]
@@ -112,6 +141,8 @@ Open questions to resolve before locking formulas (research checkpoint):
 5. Current SMMLV and rates for the target year (start with 2026, keep 2025 as a preset if useful).
 6. FSP brackets and whether to include them in v1.
 7. Confirm UGPP presunción percentages against the official 4-digit anexo (v1 uses CIIU **sections** as a working table).
+8. Mixed month (honorarios + capital): one combined IBC and one floor, or rentista “no duty if net < 1 SMMLV” only on the capital slice?
+9. ARL: omit for pure rentista; if the same month has honorarios, keep the ARL class on the combined IBC?
 
 Until those are answered, the code should keep rules in a single `rules.js` with comments pointing at the decision. Types for those values live as JSDoc in the same file ([ARCHITECTURE.md](./ARCHITECTURE.md)).
 
@@ -175,6 +206,7 @@ colombian-contractor/
 - [x] Hard-coded / table year parameters (editable in the UI)
 - [x] Honorarios: 40% constant or UGPP presunción de costos
 - [x] Previous month default; monthly TRM prefetch
+- [ ] Rentas de capital: multiple lines; 40% of net after real or 28.08% presumed costs; rentista floor
 - [ ] Confirm research checkpoint before trusting the numbers
 - [ ] Replace UGPP section table with official anexo if required
 

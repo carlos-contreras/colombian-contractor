@@ -4,6 +4,7 @@
  * @typedef {import("./rules.js").IncomeSource} IncomeSource
  * @typedef {import("./rules.js").YearParams} YearParams
  * @typedef {import("./rules.js").MonthResult} MonthResult
+ * @typedef {import("./rules.js").SourceIbc} SourceIbc
  * @typedef {import("./rules.js").SourceType} SourceType
  * @typedef {import("./rules.js").WarningCode} WarningCode
  */
@@ -43,6 +44,9 @@ const WARNING_TEXT = {
   missing_arl: "No hay tarifa ARL para la clase elegida.",
   missing_ugpp_activity: "Elegiste presunción de costos: falta la actividad UGPP.",
 };
+
+/** @type {Set<string>} */
+const trmCachedDates = new Set();
 
 /** @type {string} */
 let yearMonth = previousYearMonth();
@@ -112,11 +116,7 @@ function bindPeriodAndParams() {
     void persistYearParams();
     renderResults();
   });
-  els.fspRate.addEventListener("input", () => {
-    params.fspRate = Number(els.fspRate.value) || 0;
-    void persistYearParams();
-    renderResults();
-  });
+
 }
 
 function fillYearMonthSelects() {
@@ -194,16 +194,19 @@ async function loadPeriod(options) {
  * @returns {Promise<YearParams>}
  */
 async function ensureYearParams(year) {
+  const loaded = loadYearParams(year);
   const cached = await store.getYearParams(year);
   if (cached) {
-    return {
+    const next = {
       ...cached,
       arlClass: params.arlClass,
       fspRate: params.fspRate,
       arlRates: cached.arlRates,
     };
+    if (hasOfficialSmmlv(year)) next.smmlv = loaded.smmlv;
+    await store.saveYearParams(year, next);
+    return next;
   }
-  const loaded = loadYearParams(year);
   loaded.arlClass = params.arlClass;
   loaded.fspRate = params.fspRate;
   await store.saveYearParams(year, loaded);
@@ -224,11 +227,13 @@ async function ensureTrmMonth(monthKey) {
   const already = await store.isTrmMonthLoaded(monthKey);
   if (already && monthKey !== todayMonth) {
     const existing = await store.listTrmsForMonth(monthKey);
+    for (const quote of existing) trmCachedDates.add(quote.date);
     return existing.length;
   }
   const byDate = await getTrmMonth(monthKey);
   await store.putTrms(Object.values(byDate));
   await store.markTrmMonthLoaded(monthKey);
+  for (const day of Object.keys(byDate)) trmCachedDates.add(day);
   return Object.keys(byDate).length;
 }
 
@@ -238,6 +243,7 @@ async function applyCachedTrmToSources() {
     if (!source.trmDate) source.trmDate = defaultTrmDate(yearMonth);
     const quote = await store.getCachedTrm(source.trmDate);
     if (!quote) continue;
+    trmCachedDates.add(source.trmDate);
     source.trm = quote.value;
     if (source.usd != null && source.trm > 0) {
       source.amount = usdToCopPesos(source.usd, source.trm);
@@ -322,6 +328,16 @@ function onSourcesChange(event) {
     if (source.type === "honorarios") {
       if (!source.currency) source.currency = "USD";
       source.presuncion = source.presuncion ?? "sin";
+      source.costMode = undefined;
+    }
+    if (source.type === "renta_capital") {
+      source.presuncion = undefined;
+      source.ugppActivity = undefined;
+      source.currency = "COP";
+      source.usd = undefined;
+      source.rentaKind = source.rentaKind ?? "arrendamiento";
+      source.costMode = source.costMode ?? "presunto";
+      source.rentaTiming = source.rentaTiming ?? "cash";
     }
     syncSourceFactor(source);
     renderSources();
@@ -343,6 +359,22 @@ function onSourcesChange(event) {
     source.ugppActivity = target.value;
     syncSourceFactor(source);
     renderSources();
+    renderResults();
+    return;
+  }
+  if (target.matches("[data-field=rentaKind]") && target instanceof HTMLSelectElement) {
+    source.rentaKind = /** @type {NonNullable<IncomeSource["rentaKind"]>} */ (target.value);
+    renderResults();
+    return;
+  }
+  if (target.matches("[data-field=costMode]") && target instanceof HTMLSelectElement) {
+    source.costMode = /** @type {"real" | "presunto"} */ (target.value);
+    renderSources();
+    renderResults();
+    return;
+  }
+  if (target.matches("[data-field=rentaTiming]") && target instanceof HTMLSelectElement) {
+    source.rentaTiming = /** @type {"accrued" | "cash"} */ (target.value);
     renderResults();
     return;
   }
@@ -376,6 +408,7 @@ function onSourcesInput(event) {
   if (field === "label") source.label = target.value;
   if (field === "amount") source.amount = parseCop(target.value);
   if (field === "factor") source.factor = Number(target.value) || 0;
+  if (field === "costAmount") source.costAmount = parseCop(target.value);
   if (field === "usd") {
     source.usd = parseUsd(target.value);
     if (source.trm) source.amount = usdToCopPesos(source.usd, source.trm);
@@ -414,12 +447,18 @@ async function applyTrmDate(source, article) {
           ? trmErrorText(err)
           : "No hay TRM en caché. Escríbela a mano.";
       if (status) status.textContent = message;
+      const trmInput = article.querySelector("[data-field=trm]");
+      if (trmInput instanceof HTMLInputElement) trmInput.readOnly = false;
       return;
     }
   }
+  trmCachedDates.add(source.trmDate);
   source.trm = quote.value;
   const trmInput = article.querySelector("[data-field=trm]");
-  if (trmInput instanceof HTMLInputElement) trmInput.value = String(quote.value);
+  if (trmInput instanceof HTMLInputElement) {
+    trmInput.value = String(quote.value);
+    trmInput.readOnly = true;
+  }
   if (source.usd != null && source.trm > 0) {
     source.amount = usdToCopPesos(source.usd, source.trm);
   }
@@ -443,7 +482,7 @@ function fillParamsForm() {
   els.salud.value = String(params.saludRate);
   els.pension.value = String(params.pensionRate);
   els.arl.value = params.arlClass;
-  els.fspRate.value = String(params.fspRate ?? 0);
+
 }
 
 function renderSources() {
@@ -468,6 +507,7 @@ function sourceArticle(source) {
         Tipo
         <select data-field="type">
           <option value="honorarios"${sel(source.type === "honorarios")}>Honorarios / servicios</option>
+          <option value="renta_capital"${sel(source.type === "renta_capital")}>Renta de capital</option>
           <option value="salario"${sel(source.type === "salario")}>Salario</option>
           <option value="otro"${sel(source.type === "otro")}>Otro</option>
         </select>
@@ -496,7 +536,7 @@ function sourceArticle(source) {
       </label>
       <label>
         TRM (COP por USD)
-        <input data-field="trm" type="number" min="0" step="0.01" value="${source.trm ?? ""}">
+        <input data-field="trm" type="number" min="0" step="0.01" value="${source.trm ?? ""}"${trmFieldLocked(source) ? " readonly" : ""}>
       </label>
       `
           : `
@@ -507,6 +547,7 @@ function sourceArticle(source) {
       `
       }
       ${honorariosFields(source)}
+      ${capitalFields(source)}
       ${
         source.type === "otro"
           ? `<label>
@@ -523,6 +564,7 @@ function sourceArticle(source) {
         : ""
     }
     ${honorariosExplain(source)}
+    ${capitalExplain(source)}
   `;
   return article;
 }
@@ -539,11 +581,30 @@ function updateCopHint(article, source) {
 /**
  * @param {IncomeSource} source
  */
+/**
+ * @param {IncomeSource | undefined} source
+ * @param {SourceIbc} line
+ */
+function lineExplain(source, line) {
+  if (source?.type === "renta_capital") {
+    return `40 % del neto ${formatCop(line.net ?? 0)} = ${formatCop(line.ibc)}`;
+  }
+  const pct = Math.round(line.factor * 1000) / 10;
+  return `${pct} % de ${formatCop(line.amount)} = ${formatCop(line.ibc)}`;
+}
+
 function copHint(source) {
   if (!source.trm || source.usd == null) {
-    return "COP equivalente: consulta o escribe la TRM.";
+    return "COP equivalente: la TRM sale de la fecha (caché). Si no hay valor, escríbela a mano.";
   }
   return `COP equivalente: ${formatCop(source.amount)} (${formatUsd(source.usd)} × ${source.trm})`;
+}
+
+/**
+ * @param {IncomeSource} source
+ */
+function trmFieldLocked(source) {
+  return Boolean(source.trmDate && trmCachedDates.has(source.trmDate));
 }
 
 function renderResults() {
@@ -570,7 +631,7 @@ function renderResults() {
         <td>${pct} %</td>
         <td class="money">${formatCop(line.ibc)}</td>
       </tr>
-      <tr><td colspan="4" class="explain">${pct} % de ${formatCop(line.amount)} = ${formatCop(line.ibc)}</td></tr>`;
+      <tr><td colspan="4" class="explain">${escapeHtml(lineExplain(source, line))}</td></tr>`;
     })
     .join("");
 
@@ -584,13 +645,18 @@ function renderResults() {
     <table>
       <tbody>
         <tr><th>Ingreso bruto</th><td class="money">${formatCop(result.grossTotal)}</td></tr>
-        <tr><th>IBC crudo</th><td class="money">${formatCop(result.ibcRaw)}</td></tr>
+        <tr><th>IBC honorarios</th><td class="money">${formatCop(result.ibcHonorarios)}</td></tr>
+        <tr><th>IBC rentas de capital</th><td class="money">${formatCop(result.ibcCapital)}</td></tr>
+        <tr><th>IBC salario</th><td class="money">${formatCop(result.ibcSalario)}</td></tr>
+        <tr><th>IBC crudo (suma)</th><td class="money">${formatCop(result.ibcRaw)}</td></tr>
         <tr><th>IBC techo (25 SMMLV)</th><td class="money">${formatCop(result.ibcCapped)}</td></tr>
         <tr><th>IBC final</th><td class="money">${formatCop(result.ibcFinal)}</td></tr>
         <tr><th>Salud</th><td class="money">${formatCop(result.salud)}</td></tr>
         <tr><th>Pensión</th><td class="money">${formatCop(result.pension)}</td></tr>
         <tr><th>ARL</th><td class="money">${formatCop(result.arl)}</td></tr>
-        <tr><th>FSP</th><td class="money">${formatCop(result.fsp)}</td></tr>
+        <tr><th>FSP Solidaridad</th><td class="money">${formatCop(result.fspSolidaridad)}</td></tr>
+        <tr><th>FSP Subsistencia</th><td class="money">${formatCop(result.fspSubsistencia)}</td></tr>
+        <tr><th>FSP total</th><td class="money">${formatCop(result.fsp)}</td></tr>
         <tr><th>Total aportes</th><td class="money">${formatCop(result.totalContributions)}</td></tr>
         <tr><th>Queda después de aportes</th><td class="money">${formatCop(result.cashAfter)}</td></tr>
       </tbody>
@@ -637,6 +703,9 @@ function blankSource(type) {
     usd: type === "honorarios" ? 0 : undefined,
     trmDate: defaultTrmDate(yearMonth),
     presuncion: type === "honorarios" ? "sin" : undefined,
+    rentaKind: type === "renta_capital" ? "arrendamiento" : undefined,
+    costMode: type === "renta_capital" ? "presunto" : undefined,
+    rentaTiming: type === "renta_capital" ? "cash" : undefined,
   };
   syncSourceFactor(source);
   return source;
@@ -694,8 +763,62 @@ function honorariosExplain(source) {
 /**
  * @param {SourceType} type
  */
+function capitalFields(source) {
+  if (source.type !== "renta_capital") return "";
+  const kind = source.rentaKind ?? "arrendamiento";
+  const mode = source.costMode === "real" ? "real" : "presunto";
+  const timing = source.rentaTiming === "accrued" ? "accrued" : "cash";
+  return `
+      <label>
+        Clase de renta
+        <select data-field="rentaKind">
+          <option value="arrendamiento"${sel(kind === "arrendamiento")}>Arrendamiento</option>
+          <option value="dividendos"${sel(kind === "dividendos")}>Dividendos / participaciones</option>
+          <option value="intereses"${sel(kind === "intereses")}>Intereses / CDT / fondos</option>
+          <option value="otra"${sel(kind === "otra")}>Otra renta de capital</option>
+        </select>
+      </label>
+      <label>
+        Costos
+        <select data-field="costMode">
+          <option value="presunto"${sel(mode === "presunto")}>Presuntos 28,08&nbsp;% (UGPP rentista)</option>
+          <option value="real"${sel(mode === "real")}>Costos reales (ET 107)</option>
+        </select>
+      </label>
+      ${
+        mode === "real"
+          ? `<label>
+        Costos reales (COP)
+        <input data-field="costAmount" type="text" inputmode="numeric" value="${escapeAttr(source.costAmount ? String(source.costAmount) : "")}" autocomplete="off">
+      </label>`
+          : ""
+      }
+      <label>
+        Momento del ingreso
+        <select data-field="rentaTiming">
+          <option value="cash"${sel(timing === "cash")}>Recibido (sin contabilidad)</option>
+          <option value="accrued"${sel(timing === "accrued")}>Causado (con libros)</option>
+        </select>
+      </label>
+      <div class="legend">
+        <p>IBC de capital = <strong>40&nbsp;% del neto</strong>. Neto = bruto − costos reales, o bruto × (1 − 28,08&nbsp;%). No uses la tabla CIIU de honorarios.</p>
+      </div>`;
+}
+
+/**
+ * @param {IncomeSource} source
+ */
+function capitalExplain(source) {
+  if (source.type !== "renta_capital") return "";
+  if (source.costMode === "real") {
+    return `<p class="explain">Costos reales sobre el bruto en COP; IBC = 40&nbsp;% del neto.</p>`;
+  }
+  return `<p class="explain">Costos presuntos 28,08&nbsp;% del bruto → IBC = 40&nbsp;% del neto.</p>`;
+}
+
 function labelForType(type) {
   if (type === "honorarios") return "Honorarios";
+  if (type === "renta_capital") return "Renta de capital";
   if (type === "salario") return "Salario";
   return "Otro";
 }

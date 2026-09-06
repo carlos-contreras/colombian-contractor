@@ -17,7 +17,7 @@ import { paramsForYear } from "./rules.js";
 
 /**
  * SMMLV from the salario mínimo decree for that year (COP, integer pesos).
- * 2026 is omitted until the decree figure is confirmed in this table.
+ * 2026: $1.750.905. The $2.000.000 “salario vital” includes auxilio de transporte — not IBC.
  *
  * @type {Record<number, number>}
  */
@@ -28,6 +28,7 @@ export const OFFICIAL_SMMLV = {
   2023: 1_160_000,
   2024: 1_300_000,
   2025: 1_423_500,
+  2026: 1_750_905,
 };
 
 /** Statutory independent-contractor rates (not an annual open dataset). */

@@ -116,13 +116,13 @@ Conventions:
 - `store.js` owns record types (`MonthRecord`, export payload).
 - `app.js` does not invent parallel shapes; it imports typedefs via JSDoc (`@import` or a `typedef` re-export comment).
 - Prefer `@param` / `@returns` on exported functions.
-- Union strings for closed sets (`"honorarios" | "salario" | "otro"`), not free text, except user-facing `label`.
+- Union strings for closed sets (`"honorarios" | "salario" | "renta_capital" | "otro"`), not free text, except user-facing `label`.
 
 Sketch (names can tighten when research lands; fields should not fork in `app.js`):
 
 ```js
 /**
- * @typedef {"honorarios" | "salario" | "otro"} SourceType
+ * @typedef {"honorarios" | "salario" | "renta_capital" | "otro"} SourceType
  *
  * @typedef {object} IncomeSource
  * @property {string} id
@@ -136,6 +136,10 @@ Sketch (names can tighten when research lands; fields should not fork in `app.js
  * @property {number} [trm]
  * @property {"sin" | "ugpp"} [presuncion]
  * @property {string} [ugppActivity]
+ * @property {"arrendamiento" | "dividendos" | "intereses" | "otra"} [rentaKind]
+ * @property {"real" | "presunto"} [costMode]  Capital: ET 107 vs 28.08%
+ * @property {number} [costAmount]  Real costs, integer COP (option A)
+ * @property {"accrued" | "cash"} [rentaTiming]
  *
  * @typedef {object} YearParams
  * @property {number} year
@@ -152,6 +156,7 @@ Sketch (names can tighten when research lands; fields should not fork in `app.js
  * @property {number} amount
  * @property {number} factor
  * @property {number} ibc
+ * @property {number} [net]  Capital only
  *
  * @typedef {object} MonthResult
  * @property {number} grossTotal
@@ -162,6 +167,8 @@ Sketch (names can tighten when research lands; fields should not fork in `app.js
  * @property {number} salud
  * @property {number} pension
  * @property {number} arl
+ * @property {number} fspSolidaridad
+ * @property {number} fspSubsistencia
  * @property {number} fsp
  * @property {number} totalContributions
  * @property {number} cashAfter
@@ -228,7 +235,7 @@ total        = salud + pension + arl + fsp
 cashAfter    = grossTotal - total
 ```
 
-Default factors: honorarios **40% constant** unless the source uses UGPP presunción de costos (`js/ugpp.js`, IBC = 1 − costos presuntos). Salario `1.0`. Otro = user factor.
+Default factors: honorarios **40% of gross** unless UGPP presunción (`js/ugpp.js`, IBC = 1 − costos). **Rentas de capital:** IBC = **40% of net**; net = gross − real costs or gross × (1 − **0.2808**) (rentista line, not CIIU). FSP uses the Ley 100 table on the final pensión IBC (no manual rate). Salario `1.0`. Otro = user factor.
 
 Every figure shown in the UI must be traceable to an input and a named value on `MonthResult` (or a per-line `SourceIbc`). Warnings (floor, ceiling, missing ARL class, year mismatch) are data on `MonthResult.warnings`, not ad-hoc strings only in the DOM.
 

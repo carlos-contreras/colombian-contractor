@@ -10,9 +10,9 @@
  * 3. IVA: caller should pass honorarios **net of IVA**.
  * 4. Floor (1 SMMLV) applies when ibc_raw > 0, even if small.
  * 5. SMMLV / rates: YEAR_PRESETS below — edit in the UI.
- * 6. FSP: computed only if fspRate > 0; default 0 until brackets are confirmed.
+ * 6. FSP: Ley 100 table on IBC de pensión (ibc_final). ≥ 4 SMMLV. Not part of the 16 % pensión.
  *
- * @typedef {"honorarios" | "salario" | "otro"} SourceType
+ * @typedef {"honorarios" | "salario" | "renta_capital" | "otro"} SourceType
  *
  * @typedef {"floor" | "ceiling" | "missing_arl" | "missing_ugpp_activity"} WarningCode
  *
@@ -28,6 +28,10 @@
  * @property {number} [trm]
  * @property {"sin" | "ugpp"} [presuncion]  Honorarios only
  * @property {string} [ugppActivity]  CIIU section id when presuncion is ugpp
+ * @property {"arrendamiento" | "dividendos" | "intereses" | "otra"} [rentaKind]
+ * @property {"real" | "presunto"} [costMode]
+ * @property {number} [costAmount]  Real costs, integer COP
+ * @property {"accrued" | "cash"} [rentaTiming]
  *
  * @typedef {object} YearParams
  * @property {number} year
@@ -45,16 +49,22 @@
  * @property {number} amount
  * @property {number} factor
  * @property {number} ibc
+ * @property {number} [net]  Capital: gross − costs
  *
  * @typedef {object} MonthResult
  * @property {number} grossTotal
  * @property {SourceIbc[]} perSource
+ * @property {number} ibcHonorarios
+ * @property {number} ibcCapital
+ * @property {number} ibcSalario
  * @property {number} ibcRaw
  * @property {number} ibcCapped
  * @property {number} ibcFinal
  * @property {number} salud
  * @property {number} pension
  * @property {number} arl
+ * @property {number} fspSolidaridad
+ * @property {number} fspSubsistencia
  * @property {number} fsp
  * @property {number} totalContributions
  * @property {number} cashAfter
@@ -90,7 +100,7 @@ export const YEAR_PRESETS = {
   },
   2026: {
     year: 2026,
-    smmlv: 1_423_500,
+    smmlv: 1_750_905,
     independentFactor: 0.4,
     saludRate: 0.125,
     pensionRate: 0.16,
@@ -121,7 +131,36 @@ export function paramsForYear(year) {
  */
 export function factorForType(type, params) {
   if (type === "salario") return 1;
+  if (type === "renta_capital") return 0;
   return params.independentFactor;
+}
+
+/** Rentista presumed costs (UGPP Res. 532/2024 last row). Not a CIIU section. */
+export const CAPITAL_PRESUMED_COST_RATE = 0.2808;
+
+/** IBC as a share of **net** capital income. */
+export const CAPITAL_NET_TO_IBC = 0.4;
+
+/**
+ * @param {IncomeSource} source
+ * @returns {number}
+ */
+export function capitalCosts(source) {
+  const gross = Math.max(0, Number.isFinite(source.amount) ? Math.trunc(source.amount) : 0);
+  if (source.costMode === "real") {
+    const raw = Number.isFinite(source.costAmount) ? Math.trunc(/** @type {number} */ (source.costAmount)) : 0;
+    return Math.min(Math.max(0, raw), gross);
+  }
+  return Math.round(gross * CAPITAL_PRESUMED_COST_RATE);
+}
+
+/**
+ * @param {IncomeSource} source
+ * @returns {number}
+ */
+export function capitalNet(source) {
+  const gross = Math.max(0, Number.isFinite(source.amount) ? Math.trunc(source.amount) : 0);
+  return Math.max(0, gross - capitalCosts(source));
 }
 
 /**
@@ -131,19 +170,13 @@ export function factorForType(type, params) {
  */
 export function computeMonth(sources, params) {
   /** @type {SourceIbc[]} */
-  const perSource = sources.map((source) => {
-    const amount = Number.isFinite(source.amount) ? Math.trunc(source.amount) : 0;
-    const factor = Number.isFinite(source.factor) ? source.factor : 0;
-    return {
-      id: source.id,
-      amount,
-      factor,
-      ibc: Math.round(amount * factor),
-    };
-  });
+  const perSource = sources.map((source) => lineIbc(source));
 
   const grossTotal = perSource.reduce((sum, line) => sum + line.amount, 0);
-  const ibcRaw = perSource.reduce((sum, line) => sum + line.ibc, 0);
+  const ibcHonorarios = ibcSumFor(sources, perSource, (source) => source.type === "honorarios" || source.type === "otro");
+  const ibcCapital = ibcSumFor(sources, perSource, (source) => source.type === "renta_capital");
+  const ibcSalario = ibcSumFor(sources, perSource, (source) => source.type === "salario");
+  const ibcRaw = ibcHonorarios + ibcCapital + ibcSalario;
   const ceiling = 25 * params.smmlv;
   const floor = params.smmlv;
   const ibcCapped = Math.min(ibcRaw, ceiling);
@@ -167,19 +200,24 @@ export function computeMonth(sources, params) {
 
   const salud = Math.round(ibcFinal * params.saludRate);
   const pension = Math.round(ibcFinal * params.pensionRate);
-  const fsp = fspAmount(ibcFinal, params);
-  const totalContributions = salud + pension + arl + fsp;
+  const fspParts = fspBreakdown(ibcFinal, params.smmlv);
+  const totalContributions = salud + pension + arl + fspParts.total;
 
   return {
     grossTotal,
     perSource,
+    ibcHonorarios,
+    ibcCapital,
+    ibcSalario,
     ibcRaw,
     ibcCapped,
     ibcFinal,
     salud,
     pension,
     arl,
-    fsp,
+    fspSolidaridad: fspParts.solidaridad,
+    fspSubsistencia: fspParts.subsistencia,
+    fsp: fspParts.total,
     totalContributions,
     cashAfter: grossTotal - totalContributions,
     warnings,
@@ -187,15 +225,89 @@ export function computeMonth(sources, params) {
 }
 
 /**
- * @param {number} ibcFinal
- * @param {YearParams} params
+/**
+ * @param {IncomeSource} source
+ * @returns {SourceIbc}
+ */
+function lineIbc(source) {
+  const amount = Number.isFinite(source.amount) ? Math.trunc(source.amount) : 0;
+  if (source.type === "renta_capital") {
+    const net = capitalNet(source);
+    const ibc = Math.round(net * CAPITAL_NET_TO_IBC);
+    const factor = amount > 0 ? ibc / amount : 0;
+    return { id: source.id, amount, factor, ibc, net };
+  }
+  const factor = Number.isFinite(source.factor) ? source.factor : 0;
+  return {
+    id: source.id,
+    amount,
+    factor,
+    ibc: Math.round(amount * factor),
+  };
+}
+
+/**
+ * @param {IncomeSource[]} sources
+ * @param {SourceIbc[]} lines
+ * @param {(source: IncomeSource) => boolean} match
  * @returns {number}
  */
-function fspAmount(ibcFinal, params) {
-  const rate = params.fspRate ?? 0;
-  if (!(rate > 0)) return 0;
-  const thresholdSmmlv = params.fspThresholdSmmlv ?? 0;
-  const threshold = thresholdSmmlv * params.smmlv;
-  if (ibcFinal < threshold) return 0;
-  return Math.round(ibcFinal * rate);
+function ibcSumFor(sources, lines, match) {
+  let sum = 0;
+  for (let i = 0; i < sources.length; i += 1) {
+    if (match(sources[i])) sum += lines[i].ibc;
+  }
+  return sum;
+}
+
+/**
+ * FSP on pensión IBC (Ley 100 arts. 25–27; Dec. 1833/2016). Ley 2381 scale not used yet.
+ *
+ * @param {number} ibcFinal
+ * @param {number} smmlv
+ * @returns {{ solidaridad: number, subsistencia: number, total: number, solidaridadRate: number, subsistenciaRate: number }}
+ */
+export function fspBreakdown(ibcFinal, smmlv) {
+  const empty = {
+    solidaridad: 0,
+    subsistencia: 0,
+    total: 0,
+    solidaridadRate: 0,
+    subsistenciaRate: 0,
+  };
+  if (!(ibcFinal > 0) || !(smmlv > 0)) return empty;
+  const k = ibcFinal / smmlv;
+  let solidaridadRate = 0;
+  let subsistenciaRate = 0;
+  if (k < 4) {
+    solidaridadRate = 0;
+    subsistenciaRate = 0;
+  } else if (k < 16) {
+    solidaridadRate = 0.005;
+    subsistenciaRate = 0.005;
+  } else if (k <= 17) {
+    solidaridadRate = 0.005;
+    subsistenciaRate = 0.007;
+  } else if (k <= 18) {
+    solidaridadRate = 0.005;
+    subsistenciaRate = 0.009;
+  } else if (k <= 19) {
+    solidaridadRate = 0.005;
+    subsistenciaRate = 0.011;
+  } else if (k <= 20) {
+    solidaridadRate = 0.005;
+    subsistenciaRate = 0.013;
+  } else {
+    solidaridadRate = 0.005;
+    subsistenciaRate = 0.015;
+  }
+  const solidaridad = Math.round(ibcFinal * solidaridadRate);
+  const subsistencia = Math.round(ibcFinal * subsistenciaRate);
+  return {
+    solidaridad,
+    subsistencia,
+    total: solidaridad + subsistencia,
+    solidaridadRate,
+    subsistenciaRate,
+  };
 }

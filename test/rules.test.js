@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { computeMonth, factorForType, paramsForYear } from "../js/rules.js";
+import { computeMonth, factorForType, fspBreakdown, paramsForYear } from "../js/rules.js";
 
 /** @param {Partial<import("../js/rules.js").IncomeSource> & { id: string }} extra */
 function source(extra) {
@@ -77,12 +77,86 @@ test("contributions are rounded pesos from IBC final", () => {
   assert.equal(result.salud, Math.round(10_000_000 * params.saludRate));
   assert.equal(result.pension, Math.round(10_000_000 * params.pensionRate));
   assert.equal(result.arl, Math.round(10_000_000 * params.arlRates.I));
-  assert.equal(result.fsp, 0);
+  const fspParts = fspBreakdown(10_000_000, params.smmlv);
+  assert.equal(result.fspSolidaridad, fspParts.solidaridad);
+  assert.equal(result.fspSubsistencia, fspParts.subsistencia);
+  assert.equal(result.fsp, fspParts.total);
   assert.equal(
     result.totalContributions,
     result.salud + result.pension + result.arl + result.fsp,
   );
   assert.equal(result.cashAfter, result.grossTotal - result.totalContributions);
+});
+
+test("capital IBC is 40% of net after 28.08% presumed costs", () => {
+  const result = computeMonth(
+    [
+      source({
+        id: "c",
+        type: "renta_capital",
+        amount: 10_000_000,
+        factor: 0,
+        costMode: "presunto",
+      }),
+    ],
+    paramsForYear(2026),
+  );
+  assert.equal(result.perSource[0].net, 7_192_000);
+  assert.equal(result.ibcCapital, 2_876_800);
+  assert.equal(result.ibcHonorarios, 0);
+  assert.equal(result.ibcRaw, 2_876_800);
+});
+
+test("capital real costs then 40% of net", () => {
+  const result = computeMonth(
+    [
+      source({
+        id: "c",
+        type: "renta_capital",
+        amount: 10_000_000,
+        factor: 0,
+        costMode: "real",
+        costAmount: 3_000_000,
+      }),
+    ],
+    paramsForYear(2026),
+  );
+  assert.equal(result.perSource[0].net, 7_000_000);
+  assert.equal(result.ibcCapital, 2_800_000);
+});
+
+test("FSP on 4.57 SMLMV", () => {
+  const smmlv = paramsForYear(2026).smmlv;
+  const ibc = Math.round(4.57 * smmlv);
+  const result = computeMonth(
+    [source({ id: "h", type: "salario", amount: ibc, factor: 1 })],
+    paramsForYear(2026),
+  );
+  assert.equal(result.ibcFinal, ibc);
+  assert.equal(result.fspSolidaridad, Math.round(ibc * 0.005));
+  assert.equal(result.fspSubsistencia, Math.round(ibc * 0.005));
+  assert.equal(result.fsp, result.fspSolidaridad + result.fspSubsistencia);
+});
+
+test("PILA uses honorarios IBC plus capital IBC", () => {
+  const params = paramsForYear(2026);
+  const result = computeMonth(
+    [
+      source({ id: "h", amount: 10_000_000, factor: 0.4 }),
+      source({
+        id: "c",
+        type: "renta_capital",
+        amount: 10_000_000,
+        factor: 0,
+        costMode: "presunto",
+      }),
+    ],
+    params,
+  );
+  assert.equal(result.ibcHonorarios, 4_000_000);
+  assert.equal(result.ibcCapital, 2_876_800);
+  assert.equal(result.ibcRaw, 6_876_800);
+  assert.equal(result.salud, Math.round(result.ibcFinal * params.saludRate));
 });
 
 test("missing ARL class warns and charges 0 ARL", () => {

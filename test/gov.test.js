@@ -17,10 +17,15 @@ test("loadYearParams uses decree SMMLV and statutory rates for 2025", () => {
   assert.equal(hasOfficialSmmlv(2025), true);
 });
 
+test("loadYearParams uses 2026 SMMLV 1.750.905 not auxilio-inclusive 2.000.000", () => {
+  assert.equal(hasOfficialSmmlv(2026), true);
+  assert.equal(loadYearParams(2026).smmlv, 1_750_905);
+});
+
 test("loadYearParams keeps a fallback SMMLV when the year is missing", () => {
-  assert.equal(hasOfficialSmmlv(2026), false);
-  const params = loadYearParams(2026);
-  assert.equal(params.year, 2026);
+  assert.equal(hasOfficialSmmlv(2027), false);
+  const params = loadYearParams(2027);
+  assert.equal(params.year, 2027);
   assert.ok(params.smmlv > 0);
 });
 
