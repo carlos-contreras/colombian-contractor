@@ -143,6 +143,7 @@ Sketch (names can tighten when research lands; fields should not fork in `app.js
  * @property {"real" | "presunto"} [costMode]  Capital: ET 107 vs 28.08%
  * @property {number} [costAmount]  Real costs, integer COP (option A)
  * @property {"accrued" | "cash"} [rentaTiming]
+ * @property {0 | 0.006 | 0.02} [ccfRate]  Honorarios CCF rate for this contract
  *
  * @typedef {object} YearParams
  * @property {number} year
@@ -159,6 +160,7 @@ Sketch (names can tighten when research lands; fields should not fork in `app.js
  * @property {number} amount
  * @property {number} factor
  * @property {number} ibc
+ * @property {number} ccf  CCF amount for this honorarios line
  * @property {number} [net]  Capital only
  *
  * @typedef {object} MonthResult
@@ -173,6 +175,7 @@ Sketch (names can tighten when research lands; fields should not fork in `app.js
  * @property {number} fspSolidaridad
  * @property {number} fspSubsistencia
  * @property {number} fsp
+ * @property {number} ccf
  * @property {number} totalContributions
  * @property {number} cashAfter
  * @property {("floor"|"ceiling"|"missing_arl"|"missing_ugpp_activity")[]} warnings
@@ -238,7 +241,7 @@ total        = salud + pension + arl + fsp
 cashAfter    = grossTotal - total
 ```
 
-Default factors: honorarios **40% of gross** unless UGPP presunción (`js/ugpp.js`, IBC = 1 − costos). **Rentas de capital:** IBC = **40% of net**; net = gross − real costs or gross × (1 − **0.2808**) (rentista line, not CIIU). FSP uses the Ley 100 table on the final pensión IBC (no manual rate). Salario `1.0`. Otro = user factor.
+Default factors: honorarios **40% of gross** unless UGPP presunción (`js/ugpp.js`, IBC = 1 − costos). **Rentas de capital:** IBC = **40% of net**; net = gross − real costs or gross × (1 − **0.2808**) (rentista line, not CIIU). FSP uses the Ley 100 table on the final pensión IBC (no manual rate). Each honorarios line may add CCF at `0`, `0.006`, or `0.02` of that contract’s IBC. Salario `1.0`. Otro = user factor.
 
 Every figure shown in the UI must be traceable to an input and a named value on `MonthResult` (or a per-line `SourceIbc`). Warnings (floor, ceiling, missing ARL class, year mismatch) are data on `MonthResult.warnings`, not ad-hoc strings only in the DOM.
 

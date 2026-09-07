@@ -38,6 +38,7 @@ Rules must be confirmed against current law before coding numbers. The **model**
 - Pensión: typically 16% of IBC
 - ARL: rate by risk class (I–V) × IBC
 - FSP (Fondo de Solidaridad Pensional): Ley 100 table on the combined pensión IBC (≥ 4 SMMLV). No manual rate.
+- CCF independiente: optional per honorarios contract at `0.6%` basic or `2%` full contribution on that contract’s IBC; no CCF is calculated for salary-only sources.
 
 The UI must make **year parameters** explicit (SMMLV, salud, pensión, ARL) so they can be updated without rewriting logic. The 40% honorarios factor is **not** a year field; it is a constant unless a source uses UGPP presunción.
 
@@ -84,12 +85,13 @@ Single-page app.
 - Choosing a year loads/caches SMMLV + statutory rates (`js/gov.js`). Choosing a month prefetches that month’s TRMs once.
 - List of income sources for that month (add / edit / delete).
 - Parameters panel: SMMLV, salud, pensión, ARL class (FSP is automatic on the combined pensión IBC).
+- Each honorarios source has its own optional CCF selection: no aporta, 0.6%, or 2%.
 - Results:
   - Gross income total
   - IBC per line
   - Raw combined IBC
   - IBC after floor/ceiling
-  - Breakdown of salud, pensión, ARL, FSP (if applicable)
+  - Breakdown of salud, pensión, ARL, FSP, and per-contract CCF (if applicable)
   - Total to pay vs cash left after contributions
 - Short explanation under each figure (“40% of $X = $Y”).
 
