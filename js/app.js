@@ -536,7 +536,7 @@ function onSourcesBlur(event) {
   if (!(target instanceof HTMLInputElement)) return;
 
   const field = target.dataset.field;
-  if (field !== "amount" && field !== "usd" && field !== "trm") return;
+  if (field !== "amount" && field !== "usd" && field !== "trm" && field !== "costAmount") return;
 
   const article = target.closest("article");
   if (!article || !article.dataset.id) return;
@@ -551,6 +551,9 @@ function onSourcesBlur(event) {
   }
   if (field === "trm" && source.trm != null) {
     target.value = formatUsd(source.trm);
+  }
+  if (field === "costAmount" && source.costAmount != null && source.costAmount > 0) {
+    target.value = formatCop(source.costAmount);
   }
 }
 
@@ -974,7 +977,7 @@ function capitalFields(source) {
         mode === "real"
           ? `<label>
         Costos reales (COP)
-        <input data-field="costAmount" type="text" inputmode="numeric" value="${escapeAttr(source.costAmount ? String(source.costAmount) : "")}" autocomplete="off">
+        <input data-field="costAmount" type="text" inputmode="numeric" value="${source.costAmount ? escapeAttr(formatCop(source.costAmount)) : ""}" autocomplete="off">
       </label>`
           : ""
       }
