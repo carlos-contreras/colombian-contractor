@@ -101,28 +101,37 @@ function withStore(storeName, mode, action) {
       const transaction = db.transaction(storeName, mode);
       const store = transaction.objectStore(storeName);
       let settled = false;
-      const finish = (value) => {
-        if (!settled) {
+      let requestDone = false;
+      let transactionDone = false;
+      /** @type {unknown} */
+      let value;
+      const maybeResolve = () => {
+        if (!settled && requestDone && transactionDone) {
           settled = true;
           resolve(value);
         }
       };
-      transaction.onerror = () => {
+      const finish = (nextValue) => {
+        value = nextValue;
+        requestDone = true;
+        maybeResolve();
+      };
+      const fail = (reason) => {
         if (!settled) {
           settled = true;
-          reject(transaction.error);
+          reject(reason);
         }
       };
-      transaction.onabort = () => {
-        if (!settled) {
-          settled = true;
-          reject(transaction.error ?? new Error("IndexedDB transaction aborted"));
-        }
+      transaction.oncomplete = () => {
+        transactionDone = true;
+        maybeResolve();
       };
+      transaction.onerror = () => fail(transaction.error);
+      transaction.onabort = () => fail(transaction.error ?? new Error("IndexedDB transaction aborted"));
       try {
-        action(store, finish, reject);
+        action(store, finish, fail);
       } catch (error) {
-        reject(error);
+        fail(error);
       }
     });
   });

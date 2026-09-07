@@ -83,10 +83,13 @@ init();
 async function init() {
   fillYearMonthSelects();
   bindPeriodAndParams();
+  installPersistenceGuards();
+  await restoreStartupMonth();
   if (!els.addSource.dataset.listener) {
     els.addSource.dataset.listener = "1";
     els.addSource.addEventListener("click", () => {
       sources.push(blankSource("honorarios"));
+      scheduleAutosave();
       renderSources();
       renderResults();
     });
@@ -153,6 +156,34 @@ async function init() {
   } else {
     els.storageStatus.textContent = "Aviso: IndexedDB no está disponible; los datos se perderán al recargar. Usa el respaldo JSON.";
   }
+}
+
+function installPersistenceGuards() {
+  const flush = () => {
+    if (autosaveTimer) {
+      clearTimeout(autosaveTimer);
+      autosaveTimer = null;
+    }
+    if (!hasPersistableSourceData()) return;
+    void saveCurrentMonth({ refreshHistory: false }).catch((error) => {
+      console.error("No se pudo guardar antes de salir", error);
+    });
+  };
+
+  window.addEventListener("pagehide", flush);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flush();
+  });
+}
+
+async function restoreStartupMonth() {
+  const saved = await store.getMonth(yearMonth);
+  if (saved) return;
+  const summaries = await store.listMonths();
+  if (summaries.length === 0) return;
+  yearMonth = summaries[0].yearMonth;
+  els.year.value = yearMonth.slice(0, 4);
+  els.month.value = yearMonth.slice(5, 7);
 }
 
 function bindPeriodAndParams() {
@@ -354,7 +385,7 @@ function scheduleAutosave(force = false) {
   }, 600);
 }
 
-async function saveCurrentMonth() {
+async function saveCurrentMonth(options = { refreshHistory: true }) {
   const result = computeMonth(sources, params);
   await store.saveMonth(yearMonth, {
     yearMonth,
@@ -362,7 +393,7 @@ async function saveCurrentMonth() {
     params: structuredClone(params),
     result,
   });
-  await renderHistory();
+  if (options.refreshHistory) await renderHistory();
 }
 
 async function onSave() {
@@ -458,6 +489,7 @@ function onSourcesClick(event) {
     const source = sources.find((row) => row.id === id);
     if (!source) return;
     source.note = "";
+    scheduleAutosave();
     renderSources();
     renderResults();
     const note = els.sources.querySelector(`[data-id="${id}"] [data-field="note"]`);
