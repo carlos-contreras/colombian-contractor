@@ -17,6 +17,7 @@ import {
   usdToCopPesos,
 } from "./trm.js";
 import { computeMonth } from "./rules.js";
+import { DISABLE_SIGN_ON } from "./config.js";
 import {
   DEFAULT_UGPP_ACTIVITY,
   UGPP_ACTIVITIES,
@@ -205,7 +206,10 @@ async function startCalculator(session) {
 function bindAuth() {
   const form = document.querySelector("#auth-form");
   const signOutButton = document.querySelector("#sign-out");
-  const exportLocalButton = document.querySelector("#export-local-data");
+  const signUpButton = document.querySelector('button[name="auth-action"][value="signup"]');
+  if (DISABLE_SIGN_ON && signUpButton instanceof HTMLButtonElement) {
+    signUpButton.hidden = true;
+  }
   if (form instanceof HTMLFormElement && !form.dataset.listener) {
     form.dataset.listener = "1";
     form.addEventListener("submit", async (event) => {
@@ -213,6 +217,10 @@ function bindAuth() {
       const email = /** @type {HTMLInputElement} */ (document.querySelector("#auth-email")).value.trim();
       const password = /** @type {HTMLInputElement} */ (document.querySelector("#auth-password")).value;
       const action = event.submitter instanceof HTMLButtonElement ? event.submitter.value : "signin";
+      if (action === "signup" && DISABLE_SIGN_ON) {
+        setAuthStatus("La creación de cuentas está deshabilitada.");
+        return;
+      }
       setAuthStatus("Conectando…");
       try {
         const response = action === "signup"
@@ -236,10 +244,6 @@ function bindAuth() {
       window.location.reload();
     });
   }
-  if (exportLocalButton instanceof HTMLButtonElement && !exportLocalButton.dataset.listener) {
-    exportLocalButton.dataset.listener = "1";
-    exportLocalButton.addEventListener("click", onExportLocalData);
-  }
 }
 
 function showSignedOut(message = "") {
@@ -247,11 +251,9 @@ function showSignedOut(message = "") {
   const form = document.querySelector("#auth-form");
   const account = document.querySelector("#account-info");
   const content = document.querySelector("#app-content");
-  const exportLocalButton = document.querySelector("#export-local-data");
   authSection?.removeAttribute("hidden");
   form?.removeAttribute("hidden");
   account?.setAttribute("hidden", "");
-  exportLocalButton?.removeAttribute("hidden");
   content?.setAttribute("hidden", "");
   if (message) setAuthStatus(message);
 }
@@ -261,12 +263,10 @@ function showSignedIn(email) {
   const form = document.querySelector("#auth-form");
   const account = document.querySelector("#account-info");
   const content = document.querySelector("#app-content");
-  const exportLocalButton = document.querySelector("#export-local-data");
   const emailElement = document.querySelector("#account-email");
   authSection?.removeAttribute("hidden");
   form?.setAttribute("hidden", "");
   account?.removeAttribute("hidden");
-  exportLocalButton?.setAttribute("hidden", "");
   content?.removeAttribute("hidden");
   if (emailElement) emailElement.textContent = email;
 }
@@ -538,16 +538,6 @@ function showToast(message) {
   setTimeout(() => {
     toast.setAttribute("hidden", "");
   }, 2200);
-}
-
-async function onExportLocalData() {
-  try {
-    const payload = await store.exportAll();
-    downloadArchive(payload, `colombian-contractor-local-${new Date().toISOString().slice(0, 10)}.json`);
-    setAuthStatus("Respaldo local exportado.");
-  } catch (error) {
-    setAuthStatus(errorMessage(error));
-  }
 }
 
 async function onExportData() {

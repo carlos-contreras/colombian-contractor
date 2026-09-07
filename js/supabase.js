@@ -1,5 +1,7 @@
 // @ts-check
 
+import { DISABLE_SIGN_ON } from "./config.js";
+
 /**
  * Supabase browser client.
  *
@@ -55,6 +57,12 @@ export async function signIn(email, password) {
 
 /** @param {string} email @param {string} password @returns {Promise<any>} */
 export async function signUp(email, password) {
+  if (DISABLE_SIGN_ON) {
+    return {
+      data: { user: null, session: null },
+      error: new Error("La creación de cuentas está deshabilitada."),
+    };
+  }
   const client = await getSupabaseClient();
   return client.auth.signUp({ email, password });
 }

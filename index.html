@@ -11,16 +11,18 @@
     <header>
       <h1>Calculadora IBC</h1>
       <p>
-        Ingreso base de cotización para contratistas. Las tarifas son un
-        <strong>modelo de trabajo</strong> y se pueden editar. Esto no es
-        asesoría legal ni contable.
+        Herramienta para trabajadores independientes y contratistas en Colombia:
+        estima el ingreso base de cotización (IBC) y los aportes a salud,
+        pensión, ARL, FSP y CCF a partir de tus ingresos. Las tarifas son un
+        <strong>modelo de trabajo</strong> editable; esto no es asesoría legal
+        ni contable.
       </p>
     </header>
 
     <main>
       <section id="auth-section" aria-labelledby="auth-titulo">
         <h2 id="auth-titulo">Cuenta</h2>
-        <p class="muted">Inicia sesión para sincronizar tus datos con Supabase.</p>
+        <p class="muted">Inicia sesión para sincronizar tus datos.</p>
         <form id="auth-form">
           <label>
             Correo electrónico
@@ -34,9 +36,6 @@
           <button type="submit" name="auth-action" value="signup" class="secondary">Crear cuenta</button>
           <p id="auth-status" class="muted" aria-live="polite"></p>
         </form>
-        <p>
-          <button id="export-local-data" type="button" class="secondary">Exportar datos locales</button>
-        </p>
         <div id="account-info" hidden>
           <p>Sesión iniciada como <strong id="account-email"></strong>.</p>
           <button id="sign-out" type="button" class="secondary">Cerrar sesión</button>
@@ -141,8 +140,8 @@
 
     <footer>
       <small>
-        TRM oficial: Superintendencia Financiera (datos.gov.co). Confirma
-        SMMLV, tarifas y el 40&nbsp;% con la norma vigente o un contador.
+        Created By: Ing. Carlos Contreras ·
+        <a href="mailto:carlos.contreras@hey.com">carlos.contreras@hey.com</a>
       </small>
     </footer>
 

@@ -31,6 +31,8 @@ python -m http.server 8000
 
 Then open `http://localhost:8000`. The page is static, but it connects to the configured Supabase project for authentication and persistence.
 
+New account creation is disabled by default. Set `DISABLE_SIGN_ON=false` in the deployment environment, or inject `window.__APP_CONFIG__ = { DISABLE_SIGN_ON: "false" }` before `js/app.js` loads, to open sign-up. Also disable or enable sign-ups in the Supabase Auth settings for backend enforcement.
+
 ## Test
 
 Node’s built-in runner (no extra packages):
