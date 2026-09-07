@@ -36,22 +36,12 @@
           </label>
         </div>
         <p id="gov-status" class="muted" aria-live="polite"></p>
-      </section>
-
-      <section aria-labelledby="fuentes-titulo">
-        <h2 id="fuentes-titulo">Fuentes de ingreso</h2>
-        <p class="muted">
-          El IBC se calcula en pesos. Si te pagan en dólares, la TRM del mes
-          se carga al elegir el mes; cambia la fecha o escribe la tasa a mano.
-        </p>
-        <div id="sources"></div>
-        <p class="toolbar">
-          <button id="add-source" type="button">Agregar fuente</button>
-          <button id="reset-data" type="button" class="secondary">Limpiar datos</button>
+        <p>
+          <button type="button" id="toggle-params" class="secondary">Mostrar parámetros del año</button>
         </p>
       </section>
 
-      <section aria-labelledby="params-titulo">
+      <section aria-labelledby="params-titulo" id="params-section" hidden>
         <h2 id="params-titulo">Parámetros del año</h2>
         <p class="muted">
           SMMLV sale de la tabla de decretos; salud 12,5&nbsp;% y pensión
@@ -75,6 +65,19 @@
           </label>
           <p class="muted">FSP se calcula automáticamente si IBC de pensión ≥ 4 SMLMV (tabla Ley 100). No hace falta elegir tarifa.</p>
         </div>
+      </section>
+
+      <section aria-labelledby="fuentes-titulo">
+        <h2 id="fuentes-titulo">Fuentes de ingreso</h2>
+        <p class="muted">
+          El IBC se calcula en pesos. Si te pagan en dólares, la TRM del mes
+          se carga al elegir el mes; cambia la fecha o escribe la tasa a mano.
+        </p>
+        <div id="sources"></div>
+        <p class="toolbar">
+          <button id="add-source" type="button">Agregar fuente</button>
+          <button id="reset-data" type="button" class="secondary">Limpiar datos</button>
+        </p>
       </section>
 
       <section aria-labelledby="resultados-titulo">

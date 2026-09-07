@@ -105,6 +105,20 @@ async function init() {
       }
     });
   }
+  const toggleParamsBtn = document.querySelector("#toggle-params");
+  const paramsSection = document.querySelector("#params-section");
+  if (toggleParamsBtn && paramsSection) {
+    toggleParamsBtn.addEventListener("click", () => {
+      if (paramsSection.hasAttribute("hidden")) {
+        paramsSection.removeAttribute("hidden");
+        toggleParamsBtn.textContent = "Ocultar parámetros del año";
+      } else {
+        paramsSection.setAttribute("hidden", "");
+        toggleParamsBtn.textContent = "Mostrar parámetros del año";
+      }
+    });
+  }
+
   els.save.addEventListener("click", onSave);
   els.copyPrevious.addEventListener("click", onCopyPrevious);
   els.sources.addEventListener("click", onSourcesClick);
