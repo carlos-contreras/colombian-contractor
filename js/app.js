@@ -932,6 +932,7 @@ function sourceArticle(source) {
       <label>
         Monto USD
         <input data-field="usd" type="text" inputmode="decimal" value="${source.usd != null ? escapeAttr(formatUsd(source.usd)) : ""}" autocomplete="off">
+        <small class="muted cop-hint">${copHint(source)}</small>
       </label>
       <label>
         Fecha TRM
@@ -963,12 +964,7 @@ function sourceArticle(source) {
       }
     </div>
     ${noteField(source)}
-    ${
-      usd
-        ? `<p class="explain cop-hint">${copHint(source)}</p>
-           <p class="trm-status muted"></p>`
-        : ""
-    }
+    ${usd ? '<p class="trm-status muted"></p>' : ""}
     ${honorariosExplain(source)}
     ${capitalExplain(source)}
   `;
@@ -1020,7 +1016,7 @@ function copHint(source) {
   if (!source.trm || source.usd == null) {
     return "COP equivalente: la TRM sale de la fecha (caché). Si no hay valor, escríbela a mano.";
   }
-  return `COP equivalente: ${formatCop(source.amount)} (${formatUsd(source.usd)} × ${source.trm})`;
+  return `Equivalente COP: ${formatCop(source.amount)}`;
 }
 
 /**
