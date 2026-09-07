@@ -124,6 +124,7 @@ async function init() {
   els.sources.addEventListener("click", onSourcesClick);
   els.sources.addEventListener("change", onSourcesChange);
   els.sources.addEventListener("input", onSourcesInput);
+  els.sources.addEventListener("blur", onSourcesBlur, true);
   await loadPeriod({ resetSources: true });
   await renderHistory();
 }
@@ -334,6 +335,7 @@ function onSourcesClick(event) {
   const id = article.dataset.id;
   if (!id) return;
   if (target.matches("[data-delete]")) {
+    if (!confirm("¿Eliminar esta fuente de ingreso?")) return;
     sources = sources.filter((row) => row.id !== id);
     if (sources.length === 0) sources.push(blankSource("honorarios"));
     renderSources();
@@ -469,6 +471,25 @@ function onSourcesInput(event) {
 }
 
 /**
+ * @param {FocusEvent} event
+ */
+function onSourcesBlur(event) {
+  const target = /** @type {HTMLElement} */ (event.target);
+  if (!(target instanceof HTMLInputElement)) return;
+  if (target.dataset.field !== "amount") return;
+
+  const article = target.closest("article");
+  if (!article || !article.dataset.id) return;
+  const source = sources.find((row) => row.id === article.dataset.id);
+  if (!source) return;
+
+  // Re-format on blur for better UX
+  if (source.amount > 0) {
+    target.value = formatCop(source.amount);
+  }
+}
+
+/**
  * @param {IncomeSource} source
  * @param {Element} article
  */
@@ -539,7 +560,7 @@ function sourceArticle(source) {
   article.innerHTML = `
     <header>
       <h3>${escapeHtml(source.label || labelForType(source.type))}</h3>
-      <button type="button" data-delete class="secondary">Eliminar</button>
+      <button type="button" data-delete class="secondary" aria-label="Eliminar fuente">×</button>
     </header>
     <div class="grid-2">
       <label>
@@ -581,7 +602,7 @@ function sourceArticle(source) {
           : `
       <label>
         Monto COP
-        <input data-field="amount" type="text" inputmode="numeric" value="${escapeAttr(source.amount ? String(source.amount) : "")}" autocomplete="off">
+        <input data-field="amount" type="text" inputmode="numeric" value="${source.amount ? escapeAttr(formatCop(source.amount)) : ""}" autocomplete="off">
       </label>
       `
       }

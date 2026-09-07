@@ -51,6 +51,24 @@ body > footer {
   margin-bottom: 0.5rem;
 }
 
+.source header button[data-delete] {
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  font-size: 1.25rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.source header button[data-delete]:hover {
+  background-color: var(--pico-del-color, #c23);
+  color: white;
+  border-color: var(--pico-del-color, #c23);
+}
+
 .source header h3 {
   margin: 0;
   font-size: 1rem;
