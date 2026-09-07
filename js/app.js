@@ -64,7 +64,6 @@ const els = {
   smmlv: /** @type {HTMLInputElement} */ (document.querySelector("#param-smmlv")),
   salud: /** @type {HTMLInputElement} */ (document.querySelector("#param-salud")),
   pension: /** @type {HTMLInputElement} */ (document.querySelector("#param-pension")),
-  arl: /** @type {HTMLSelectElement} */ (document.querySelector("#param-arl")),
   fspRate: /** @type {HTMLInputElement} */ (document.querySelector("#param-fsp-rate")),
   warnings: /** @type {HTMLElement} */ (document.querySelector("#warnings")),
   results: /** @type {HTMLElement} */ (document.querySelector("#results")),
@@ -83,6 +82,26 @@ async function init() {
     renderSources();
     renderResults();
   });
+
+  const resetBtn = document.querySelector("#reset-data");
+  if (resetBtn) {
+    resetBtn.addEventListener("click", () => {
+      if (confirm("¿Limpiar todos los datos de esta sesión?")) {
+        store.clearAll();
+        trmCachedDates.clear();
+        yearMonth = previousYearMonth();
+        els.year.value = yearMonth.slice(0, 4);
+        els.month.value = yearMonth.slice(5, 7);
+        sources = [blankSource("honorarios")];
+        params = loadYearParams(Number(yearMonth.slice(0, 4)));
+        fillParamsForm();
+        renderSources();
+        renderResults();
+        renderHistory();
+        setGovStatus("");
+      }
+    });
+  }
   els.save.addEventListener("click", onSave);
   els.copyPrevious.addEventListener("click", onCopyPrevious);
   els.sources.addEventListener("click", onSourcesClick);
@@ -108,11 +127,6 @@ function bindPeriodAndParams() {
   });
   els.pension.addEventListener("input", () => {
     params.pensionRate = Number(els.pension.value) || 0;
-    void persistYearParams();
-    renderResults();
-  });
-  els.arl.addEventListener("change", () => {
-    params.arlClass = els.arl.value;
     void persistYearParams();
     renderResults();
   });
@@ -170,6 +184,9 @@ async function loadPeriod(options) {
     params = await ensureYearParams(year);
   }
   fillParamsForm();
+  if (sources.length === 0) {
+    sources = [blankSource("honorarios")];
+  }
   renderSources();
   renderResults();
 
@@ -329,6 +346,7 @@ function onSourcesChange(event) {
       if (!source.currency) source.currency = "USD";
       source.presuncion = source.presuncion ?? "sin";
       source.costMode = undefined;
+      // ARL stays undefined by default (optional per source)
     }
     if (source.type === "renta_capital") {
       source.presuncion = undefined;
@@ -359,6 +377,11 @@ function onSourcesChange(event) {
     source.ugppActivity = target.value;
     syncSourceFactor(source);
     renderSources();
+    renderResults();
+    return;
+  }
+  if (target.matches("[data-field=arlClass]") && target instanceof HTMLSelectElement) {
+    source.arlClass = target.value || undefined;
     renderResults();
     return;
   }
@@ -703,6 +726,7 @@ function blankSource(type) {
     usd: type === "honorarios" ? 0 : undefined,
     trmDate: defaultTrmDate(yearMonth),
     presuncion: type === "honorarios" ? "sin" : undefined,
+    arlClass: type === "honorarios" ? undefined : undefined,
     rentaKind: type === "renta_capital" ? "arrendamiento" : undefined,
     costMode: type === "renta_capital" ? "presunto" : undefined,
     rentaTiming: type === "renta_capital" ? "cash" : undefined,
@@ -742,7 +766,18 @@ function honorariosFields(source) {
       <div class="legend">
         <p><strong>Sin presunción:</strong> regla general del independiente. El IBC es el <strong>40&nbsp;%</strong> del ingreso (el 60&nbsp;% se trata como costo). Úsala si no aplicas tabla UGPP.</p>
         <p><strong>Con presunción (UGPP):</strong> la UGPP presume un porcentaje de costos según la <strong>actividad</strong>. El IBC es lo que queda (100&nbsp;% − costos). Elige esto solo si vas a cotizar con esa tabla; después aparece la actividad.</p>
-      </div>`;
+      </div>
+      <label>
+        Clase ARL (opcional)
+        <select data-field="arlClass">
+          <option value=""${sel(!source.arlClass)}>Ninguna</option>
+          <option value="I"${sel(source.arlClass === "I")}>I — Riesgo mínimo (oficina, software) · 0,522&nbsp;%</option>
+          <option value="II"${sel(source.arlClass === "II")}>II — Riesgo bajo · 1,044&nbsp;%</option>
+          <option value="III"${sel(source.arlClass === "III")}>III — Riesgo medio · 2,436&nbsp;%</option>
+          <option value="IV"${sel(source.arlClass === "IV")}>IV — Riesgo alto · 4,350&nbsp;%</option>
+          <option value="V"${sel(source.arlClass === "V")}>V — Riesgo máximo · 6,960&nbsp;%</option>
+        </select>
+      </label>`;
 }
 
 /**

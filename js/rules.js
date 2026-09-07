@@ -32,6 +32,7 @@
  * @property {"real" | "presunto"} [costMode]
  * @property {number} [costAmount]  Real costs, integer COP
  * @property {"accrued" | "cash"} [rentaTiming]
+ * @property {string} [arlClass]  I–V or undefined (no ARL for this line)
  *
  * @typedef {object} YearParams
  * @property {number} year
@@ -182,7 +183,6 @@ export function computeMonth(sources, params) {
   const ibcCapped = Math.min(ibcRaw, ceiling);
   const ibcFinal = ibcRaw === 0 ? 0 : Math.max(ibcCapped, floor);
 
-  const arlRate = params.arlRates[params.arlClass];
   /** @type {WarningCode[]} */
   const warnings = [];
   if (
@@ -192,9 +192,14 @@ export function computeMonth(sources, params) {
   ) {
     warnings.push("missing_ugpp_activity");
   }
+
+  // Effective ARL class: first source that specifies one, else year default
+  const effectiveArlClass =
+    sources.find((s) => s.arlClass)?.arlClass ?? params.arlClass;
+  const arlRate = params.arlRates[effectiveArlClass];
   const hasArl = Number.isFinite(arlRate);
   const arl = hasArl ? Math.round(ibcFinal * /** @type {number} */ (arlRate)) : 0;
-  if (!hasArl) warnings.push("missing_arl");
+  if (!hasArl && effectiveArlClass) warnings.push("missing_arl");
   if (ibcRaw > 0 && ibcFinal === floor && ibcRaw < floor) warnings.push("floor");
   if (ibcRaw > ceiling) warnings.push("ceiling");
 
