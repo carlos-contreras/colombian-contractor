@@ -240,6 +240,7 @@ function bindAuth() {
   if (signOutButton instanceof HTMLButtonElement && !signOutButton.dataset.listener) {
     signOutButton.dataset.listener = "1";
     signOutButton.addEventListener("click", async () => {
+      if (!confirm("¿Seguro que deseas cerrar sesión?")) return;
       await signOut();
       window.location.reload();
     });
@@ -935,6 +936,7 @@ function sourceArticle(source) {
       <label>
         Fecha TRM
         <input data-field="trmDate" type="date" value="${escapeAttr(source.trmDate || "")}">
+        <small class="muted">La TRM se carga de www.datos.gov.co</small>
       </label>
       <label>
         TRM (COP por USD)
@@ -1174,10 +1176,11 @@ function honorariosFields(source) {
   return `
       <label>
         Presunción de costos
-        <select data-field="presuncion">
+        <select data-field="presuncion" title="Sin presunción: IBC = 40 % del ingreso. Con presunción UGPP: IBC = 100 % menos los costos presuntos de la actividad.">
           <option value="sin"${sel(mode === "sin")}>Sin presunción (IBC 40&nbsp;%)</option>
           <option value="ugpp"${sel(mode === "ugpp")}>Con presunción de costos (UGPP)</option>
         </select>
+        <small class="muted">Contratar empleados, pagar arriendos, materiales, alguilar equipos o maquinaria habilitan el esquema de presunción de costos</small>
       </label>
       ${
         mode === "ugpp"
@@ -1189,10 +1192,6 @@ function honorariosFields(source) {
       </label>`
           : ""
       }
-      <div class="legend">
-        <p><strong>Sin presunción:</strong> regla general del independiente que no subcontrata o que no arrienda espacios, maquinaria o equipos. El IBC es el <strong>40&nbsp;%</strong> del ingreso (el 60&nbsp;% se trata como costo). Úsala si no aplicas tabla UGPP.</p>
-        <p><strong>Con presunción (UGPP):</strong> la UGPP presume un porcentaje de costos según la <strong>actividad</strong>. cuendo el independiente acarrea costos como arriendos, empleados, equipos, materias primas, etc. El IBC es lo que queda (100&nbsp;% − costos). Elige esto solo si vas a cotizar con esa tabla; después aparece la actividad.</p>
-      </div>
       <label>
         Aporte a Caja de Compensación Familiar (CCF)
         <select data-field="ccfRate">
@@ -1269,10 +1268,7 @@ function capitalFields(source) {
           <option value="cash"${sel(timing === "cash")}>Recibido (sin contabilidad)</option>
           <option value="accrued"${sel(timing === "accrued")}>Causado (con libros)</option>
         </select>
-      </label>
-      <div class="legend">
-        <p>IBC de capital = <strong>40&nbsp;% del neto</strong>. Neto = bruto − costos reales, o bruto × (1 − 28,08&nbsp;%). No uses la tabla CIIU de honorarios.</p>
-      </div>`;
+      </label>`;
 }
 
 /**
