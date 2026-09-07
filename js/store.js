@@ -53,6 +53,11 @@ function hasIndexedDb() {
   return typeof globalThis.indexedDB !== "undefined";
 }
 
+/** @returns {Promise<"indexeddb" | "memory">} */
+export async function storageMode() {
+  return (await getDb()) ? "indexeddb" : "memory";
+}
+
 /** @returns {Promise<IDBDatabase | null>} */
 function getDb() {
   if (!hasIndexedDb()) return Promise.resolve(null);

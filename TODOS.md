@@ -1,12 +1,12 @@
-# TODOs — persistence beyond v1
+# TODOs — persistence and future backends
 
-**v1 (decided):** vanilla HTML/CSS/JS with **IndexedDB** as the working store. No extra process, no server.
+**Current state:** Phase 2 local persistence is implemented. The app uses IndexedDB with JSON backups and an in-memory fallback when IndexedDB is unavailable.
 
-These items are the rest of the persistence recommendation. Do them when the trigger in each section is true — not before.
+Keep the static, single-user architecture until a real need for a server or multi-user accounts appears.
 
 ---
 
-## 2. JSON export / import (personal archive)
+## 1. JSON export / import (personal archive)
 
 IndexedDB dies with site data, another browser, or a new machine. A JSON file the owner keeps is the long-term record.
 
@@ -18,6 +18,19 @@ IndexedDB dies with site data, another browser, or a new machine. A JSON file th
 - [x] Document backup habit in README (download after saving important months)
 
 Not in this item: silent writes to a disk path, File System Access API, or splitting one file per year (add later only if a single file becomes annoying).
+
+---
+
+## 2. Local persistence hardening
+
+**Status:** Partially implemented.
+
+- [x] Auto-save edited sources and notes after a short debounce
+- [x] Show whether IndexedDB is active or unavailable
+- [ ] Test IndexedDB manually in supported browsers and private browsing modes
+- [ ] Validate imported JSON structure and backup version before replacing data
+- [ ] Add IndexedDB schema migrations for future database versions
+- [ ] Add a visible last-saved timestamp
 
 ---
 
@@ -39,7 +52,7 @@ UI and `rules.js` must not call IndexedDB (or any future DB) directly. One adapt
 
 ---
 
-## 4. SQLite / local server — not in v1
+## 4. SQLite / local server — deferred
 
 Do **not** add SQLite, WASM SQLite, PocketBase, or a local Node/Python process while the app is a static page.
 

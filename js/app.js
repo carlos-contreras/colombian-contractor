@@ -54,6 +54,8 @@ let yearMonth = previousYearMonth();
 let params = loadYearParams(Number(yearMonth.slice(0, 4)));
 /** @type {IncomeSource[]} */
 let sources = [blankSource("honorarios")];
+/** @type {ReturnType<typeof setTimeout> | null} */
+let autosaveTimer = null;
 
 const els = {
   year: /** @type {HTMLSelectElement} */ (document.querySelector("#year")),
@@ -73,6 +75,7 @@ const els = {
   exportData: /** @type {HTMLButtonElement} */ (document.querySelector("#export-data")),
   importData: /** @type {HTMLButtonElement} */ (document.querySelector("#import-data")),
   importFile: /** @type {HTMLInputElement} */ (document.querySelector("#import-file")),
+  storageStatus: /** @type {HTMLElement} */ (document.querySelector("#storage-status")),
 };
 
 init();
@@ -142,6 +145,14 @@ async function init() {
 
   await loadPeriod({ resetSources: true });
   await renderHistory();
+  const storageMode = typeof store.storageMode === "function"
+    ? await store.storageMode()
+    : "memory";
+  if (storageMode === "indexeddb") {
+    els.storageStatus.textContent = "Almacenamiento local activo (IndexedDB).";
+  } else {
+    els.storageStatus.textContent = "Aviso: IndexedDB no está disponible; los datos se perderán al recargar. Usa el respaldo JSON.";
+  }
 }
 
 function bindPeriodAndParams() {
@@ -151,16 +162,19 @@ function bindPeriodAndParams() {
     params.smmlv = parseCop(els.smmlv.value);
     els.smmlv.value = formatCop(params.smmlv);
     void persistYearParams();
+    scheduleAutosave();
     renderResults();
   });
   els.salud.addEventListener("input", () => {
     params.saludRate = (Number(els.salud.value) || 0) / 100;
     void persistYearParams();
+    scheduleAutosave();
     renderResults();
   });
   els.pension.addEventListener("input", () => {
     params.pensionRate = (Number(els.pension.value) || 0) / 100;
     void persistYearParams();
+    scheduleAutosave();
     renderResults();
   });
 
@@ -194,7 +208,9 @@ function readYearMonthFromSelects() {
 }
 
 async function onPeriodChange() {
-  yearMonth = readYearMonthFromSelects();
+  const nextYearMonth = readYearMonthFromSelects();
+  if (nextYearMonth !== yearMonth) await saveCurrentMonth();
+  yearMonth = nextYearMonth;
   await loadPeriod({ resetSources: true });
 }
 
@@ -315,6 +331,29 @@ function setGovStatus(text) {
   els.govStatus.textContent = text;
 }
 
+function hasPersistableSourceData() {
+  return sources.some((source) =>
+    (source.amount ?? 0) > 0 ||
+    (source.usd ?? 0) > 0 ||
+    (source.costAmount ?? 0) > 0 ||
+    Boolean(source.label?.trim()) ||
+    Boolean(source.note?.trim()),
+  );
+}
+
+function scheduleAutosave(force = false) {
+  if (autosaveTimer) clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(async () => {
+    autosaveTimer = null;
+    if (!force && !hasPersistableSourceData()) return;
+    try {
+      await saveCurrentMonth();
+    } catch (error) {
+      console.error("No se pudo guardar automáticamente", error);
+    }
+  }, 600);
+}
+
 async function saveCurrentMonth() {
   const result = computeMonth(sources, params);
   await store.saveMonth(yearMonth, {
@@ -327,6 +366,10 @@ async function saveCurrentMonth() {
 }
 
 async function onSave() {
+  if (autosaveTimer) {
+    clearTimeout(autosaveTimer);
+    autosaveTimer = null;
+  }
   await saveCurrentMonth();
   showToast("Mes guardado");
 }
@@ -425,6 +468,7 @@ function onSourcesClick(event) {
     if (!confirm("¿Eliminar esta fuente de ingreso?")) return;
     sources = sources.filter((row) => row.id !== id);
     if (sources.length === 0) sources.push(blankSource("honorarios"));
+    scheduleAutosave(true);
     renderSources();
     renderResults();
     return;
@@ -440,6 +484,7 @@ function onSourcesChange(event) {
   if (!article || !article.dataset.id) return;
   const source = sources.find((row) => row.id === article.dataset.id);
   if (!source) return;
+  scheduleAutosave();
 
   if (target.matches("[data-field=type]") && target instanceof HTMLSelectElement) {
     source.type = /** @type {SourceType} */ (target.value);
@@ -555,6 +600,7 @@ function onSourcesInput(event) {
     }
     updateCopHint(article, source);
   }
+  scheduleAutosave();
   renderResults();
 }
 
