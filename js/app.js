@@ -86,6 +86,23 @@ const els = {
 
 let calculatorStarted = false;
 
+/**
+ * @param {unknown} value
+ * @returns {0 | 0.006 | 0.02}
+ */
+function normalizeCcfRate(value) {
+  const rate = Number(typeof value === "string" ? value.replaceAll(",", ".") : value);
+  if (!Number.isFinite(rate) || rate <= 0) return 0;
+  if (rate === 0.006 || rate === 0.02) return rate;
+  if (rate === 0.6) return 0.006;
+  if (rate === 2) return 0.02;
+  if (rate > 1) {
+    const normalized = rate / 100;
+    if (normalized === 0.006 || normalized === 0.02) return normalized;
+  }
+  return 0;
+}
+
 init();
 
 async function init() {
@@ -317,7 +334,6 @@ function bindPeriodAndParams() {
     scheduleAutosave();
     renderResults();
   });
-
 }
 
 function fillYearMonthSelects() {
@@ -648,10 +664,12 @@ function onSourcesChange(event) {
       source.currency = "COP";
       source.presuncion = undefined;
       source.ugppActivity = undefined;
+      source.ccfRate = undefined;
     }
     if (source.type === "honorarios") {
       if (!source.currency) source.currency = "USD";
       source.presuncion = source.presuncion ?? "sin";
+      source.ccfRate = source.ccfRate === 0.006 || source.ccfRate === 0.02 ? source.ccfRate : 0;
       source.costMode = undefined;
       // ARL stays undefined by default (optional per source)
     }
@@ -660,6 +678,7 @@ function onSourcesChange(event) {
       source.ugppActivity = undefined;
       source.currency = "COP";
       source.usd = undefined;
+      source.ccfRate = undefined;
       source.rentaKind = source.rentaKind ?? "arrendamiento";
       source.costMode = source.costMode ?? "presunto";
       source.rentaTiming = source.rentaTiming ?? "cash";
@@ -683,6 +702,15 @@ function onSourcesChange(event) {
   if (target.matches("[data-field=ugppActivity]") && target instanceof HTMLSelectElement) {
     source.ugppActivity = target.value;
     syncSourceFactor(source);
+    renderSources();
+    renderResults();
+    return;
+  }
+  if (target instanceof HTMLSelectElement && target.dataset.field === "ccfRate") {
+    // Select values are strings. Persist a normalized number on this contract
+    // before recalculating, including when old archives stored a percentage.
+    source.ccfRate = normalizeCcfRate(target.value);
+    scheduleAutosave(true);
     renderSources();
     renderResults();
     return;
@@ -986,11 +1014,14 @@ function updateCopHint(article, source) {
  * @param {SourceIbc} line
  */
 function lineExplain(source, line) {
-  if (source?.type === "renta_capital") {
-    return `40 % del neto ${formatCop(line.net ?? 0)} = ${formatCop(line.ibc)}`;
+  const selectedCcfRate = normalizeCcfRate(source?.ccfRate);
+  const base = source?.type === "renta_capital"
+    ? `40 % del neto ${formatCop(line.net ?? 0)} = ${formatCop(line.ibc)}`
+    : `${Math.round(line.factor * 1000) / 10} % de ${formatCop(line.amount)} = ${formatCop(line.ibc)}`;
+  if (source && source.type !== "salario" && source.type !== "renta_capital" && (selectedCcfRate === 0.006 || selectedCcfRate === 0.02)) {
+    return `${base} · CCF ${(selectedCcfRate * 100).toFixed(1).replace(".", ",")}% = ${formatCop(line.ccf ?? 0)}`;
   }
-  const pct = Math.round(line.factor * 1000) / 10;
-  return `${pct} % de ${formatCop(line.amount)} = ${formatCop(line.ibc)}`;
+  return base;
 }
 
 function copHint(source) {
@@ -1038,15 +1069,16 @@ function renderResults() {
         <td class="money">${formatCop(line.amount)}</td>
         <td>${pct} %</td>
         <td class="money">${formatCop(line.ibc)}</td>
+        <td class="money">${formatCop(line.ccf ?? 0)}</td>
       </tr>
-      <tr><td colspan="4" class="explain">${escapeHtml(lineExplain(source, line))}</td></tr>`;
+      <tr><td colspan="5" class="explain">${escapeHtml(lineExplain(source, line))}</td></tr>`;
     })
     .join("");
 
   els.results.innerHTML = `
     <table>
       <thead>
-        <tr><th>Fuente</th><th>Bruto</th><th>Factor</th><th>IBC</th></tr>
+        <tr><th>Fuente</th><th>Bruto</th><th>Factor</th><th>IBC</th><th>CCF</th></tr>
       </thead>
       <tbody>${lines}</tbody>
     </table>
@@ -1065,6 +1097,8 @@ function renderResults() {
         <tr><th>FSP Solidaridad</th><td class="money">${formatCop(result.fspSolidaridad)}</td></tr>
         <tr><th>FSP Subsistencia</th><td class="money">${formatCop(result.fspSubsistencia)}</td></tr>
         <tr><th>FSP total</th><td class="money">${formatCop(result.fsp)}</td></tr>
+        <tr><th>Aporte CCF</th><td class="money">${formatCop(result.ccf ?? 0)}</td></tr>
+        <tr><td colspan="2" class="explain">Cada fuente independiente aplica su opción CCF sobre su propio IBC.</td></tr>
         <tr><th>Total aportes</th><td class="money">${formatCop(result.totalContributions)}</td></tr>
         <tr><th>Queda después de aportes</th><td class="money">${formatCop(result.cashAfter)}</td></tr>
       </tbody>
@@ -1127,6 +1161,7 @@ function blankSource(type) {
     trmDate: defaultTrmDate(yearMonth),
     presuncion: type === "honorarios" ? "sin" : undefined,
     arlClass: type === "honorarios" ? undefined : undefined,
+    ccfRate: type === "honorarios" ? 0 : undefined,
     rentaKind: type === "renta_capital" ? "arrendamiento" : undefined,
     costMode: type === "renta_capital" ? "presunto" : undefined,
     rentaTiming: type === "renta_capital" ? "cash" : undefined,
@@ -1139,8 +1174,9 @@ function blankSource(type) {
  * @param {IncomeSource} source
  */
 function honorariosFields(source) {
-  if (source.type !== "honorarios") return "";
+  if (source.type === "salario" || source.type === "renta_capital") return "";
   const mode = source.presuncion === "ugpp" ? "ugpp" : "sin";
+  const selectedCcfRate = normalizeCcfRate(source.ccfRate);
   const activityOptions = UGPP_ACTIVITIES.map(
     (row) =>
       `<option value="${row.id}"${sel(source.ugppActivity === row.id)}>${escapeHtml(row.label)}</option>`,
@@ -1167,6 +1203,15 @@ function honorariosFields(source) {
         <p><strong>Sin presunción:</strong> regla general del independiente que no subcontrata o que no arrienda espacios, maquinaria o equipos. El IBC es el <strong>40&nbsp;%</strong> del ingreso (el 60&nbsp;% se trata como costo). Úsala si no aplicas tabla UGPP.</p>
         <p><strong>Con presunción (UGPP):</strong> la UGPP presume un porcentaje de costos según la <strong>actividad</strong>. cuendo el independiente acarrea costos como arriendos, empleados, equipos, materias primas, etc. El IBC es lo que queda (100&nbsp;% − costos). Elige esto solo si vas a cotizar con esa tabla; después aparece la actividad.</p>
       </div>
+      <label>
+        Aporte a Caja de Compensación Familiar (CCF)
+        <select data-field="ccfRate">
+          <option value="0"${sel(selectedCcfRate !== 0.006 && selectedCcfRate !== 0.02)}>No aporta</option>
+          <option value="0.006"${sel(selectedCcfRate === 0.006)}>0,6 % — aporte básico</option>
+          <option value="0.02"${sel(selectedCcfRate === 0.02)}>2,0 % — aporte pleno</option>
+        </select>
+        <small class="muted">Se calcula sobre el IBC de esta fuente independiente.</small>
+      </label>
       <label>
         Clase ARL (opcional)
         <select data-field="arlClass">

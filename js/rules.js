@@ -33,6 +33,7 @@
  * @property {number} [costAmount]  Real costs, integer COP
  * @property {"accrued" | "cash"} [rentaTiming]
  * @property {string} [arlClass]  I–V or undefined (no ARL for this line)
+ * @property {0 | 0.006 | 0.02 | 0.6 | 2} [ccfRate]  Honorarios CCF rate for this contract
  * @property {string} [note]  Free-text note for the income source
  *
  * @typedef {object} YearParams
@@ -51,6 +52,7 @@
  * @property {number} amount
  * @property {number} factor
  * @property {number} ibc
+ * @property {number} ccf  CCF amount for this honorarios line
  * @property {number} [net]  Capital: gross − costs
  *
  * @typedef {object} MonthResult
@@ -68,6 +70,7 @@
  * @property {number} fspSolidaridad
  * @property {number} fspSubsistencia
  * @property {number} fsp
+ * @property {number} ccf
  * @property {number} totalContributions
  * @property {number} cashAfter
  * @property {WarningCode[]} warnings
@@ -207,7 +210,11 @@ export function computeMonth(sources, params) {
   const salud = Math.round(ibcFinal * params.saludRate);
   const pension = Math.round(ibcFinal * params.pensionRate);
   const fspParts = fspBreakdown(ibcFinal, params.smmlv);
-  const totalContributions = salud + pension + arl + fspParts.total;
+  const ccf = perSource.reduce(
+    (sum, line) => sum + (Number.isFinite(line.ccf) ? line.ccf : 0),
+    0,
+  );
+  const totalContributions = salud + pension + arl + fspParts.total + ccf;
 
   return {
     grossTotal,
@@ -224,6 +231,7 @@ export function computeMonth(sources, params) {
     fspSolidaridad: fspParts.solidaridad,
     fspSubsistencia: fspParts.subsistencia,
     fsp: fspParts.total,
+    ccf,
     totalContributions,
     cashAfter: grossTotal - totalContributions,
     warnings,
@@ -231,6 +239,26 @@ export function computeMonth(sources, params) {
 }
 
 /**
+/**
+ * Normalizes CCF input from the UI or stored archives.
+ * Accepts fractions (0.006 / 0.02) and legacy percentages (0.6 / 2).
+ *
+ * @param {unknown} value
+ * @returns {0 | 0.006 | 0.02}
+ */
+function normalizeCcfRate(value) {
+  const rate = Number(typeof value === "string" ? value.replaceAll(",", ".") : value);
+  if (!Number.isFinite(rate) || rate <= 0) return 0;
+  if (rate === 0.006 || rate === 0.02) return rate;
+  if (rate === 0.6) return 0.006;
+  if (rate === 2) return 0.02;
+  if (rate > 1) {
+    const normalized = rate / 100;
+    if (normalized === 0.006 || normalized === 0.02) return normalized;
+  }
+  return 0;
+}
+
 /**
  * @param {IncomeSource} source
  * @returns {SourceIbc}
@@ -241,14 +269,19 @@ function lineIbc(source) {
     const net = capitalNet(source);
     const ibc = Math.round(net * CAPITAL_NET_TO_IBC);
     const factor = amount > 0 ? ibc / amount : 0;
-    return { id: source.id, amount, factor, ibc, net };
+    return { id: source.id, amount, factor, ibc, ccf: 0, net };
   }
   const factor = Number.isFinite(source.factor) ? source.factor : 0;
+  const ibc = Math.round(amount * factor);
+  const ccfRate = source.type === "salario" || source.type === "renta_capital"
+    ? 0
+    : normalizeCcfRate(source.ccfRate);
   return {
     id: source.id,
     amount,
     factor,
-    ibc: Math.round(amount * factor),
+    ibc,
+    ccf: Math.round(ibc * ccfRate),
   };
 }
 

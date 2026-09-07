@@ -66,6 +66,43 @@ test("ceiling caps IBC at 25 SMMLV", () => {
   assert.equal(result.warnings.includes("ceiling"), true);
 });
 
+test("CCF independent contribution uses the selected rate", () => {
+  const params = paramsForYear(2026);
+  const sourceLine = [source({ id: "a", amount: 5_000_000, factor: 0.4 })];
+
+  sourceLine[0].ccfRate = /** @type {any} */ ("0.006");
+  const basic = computeMonth(sourceLine, params);
+  assert.equal(basic.ibcFinal, 2_000_000);
+  assert.equal(basic.ccf, 12_000);
+
+  sourceLine[0].ccfRate = /** @type {any} */ ("0.02");
+  const full = computeMonth(sourceLine, params);
+  assert.equal(full.ccf, 40_000);
+  assert.equal(full.totalContributions - basic.totalContributions, 28_000);
+
+  sourceLine[0].ccfRate = /** @type {any} */ ("0.6");
+  assert.equal(computeMonth(sourceLine, params).ccf, 12_000);
+
+  sourceLine[0].ccfRate = /** @type {any} */ ("0,6");
+  assert.equal(computeMonth(sourceLine, params).ccf, 12_000);
+
+  sourceLine[0].ccfRate = /** @type {any} */ ("2");
+  assert.equal(computeMonth(sourceLine, params).ccf, 40_000);
+
+  sourceLine[0].ccfRate = 0;
+  assert.equal(computeMonth(sourceLine, params).ccf, 0);
+
+  assert.equal(
+    computeMonth([source({ id: "salary", type: "salario", amount: 5_000_000, factor: 1, ccfRate: 0.02 })], params).ccf,
+    0,
+  );
+
+  assert.equal(
+    computeMonth([source({ id: "other", type: "otro", amount: 5_000_000, factor: 0.4, ccfRate: 0.02 })], params).ccf,
+    40_000,
+  );
+});
+
 test("contributions are rounded pesos from IBC final", () => {
   const params = paramsForYear(2026);
   params.arlClass = "I";
