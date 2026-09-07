@@ -7,8 +7,8 @@
  * protected by Supabase Auth and Row Level Security; never put a service-role
  * key in this file.
  */
-export const SUPABASE_URL = "https://tzbaxvkayrihzxbxzroc.supabase.co";
-export const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_DWm4GRLXdVBmYb8Ytbn5PQ_Pqelvi6D";
+export const SUPABASE_URL = "https://rnupcgrcfpoiezxalfyb.supabase.co";
+export const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_gPmTeimc4l50uyEcCRsrtg_pnlsD0dr";
 
 /** @type {Promise<any> | null} */
 let clientPromise = null;
