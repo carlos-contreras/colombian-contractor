@@ -18,6 +18,32 @@
     </header>
 
     <main>
+      <section id="auth-section" aria-labelledby="auth-titulo">
+        <h2 id="auth-titulo">Cuenta</h2>
+        <p class="muted">Inicia sesión para sincronizar tus datos con Supabase.</p>
+        <form id="auth-form">
+          <label>
+            Correo electrónico
+            <input id="auth-email" type="email" autocomplete="email" required>
+          </label>
+          <label>
+            Contraseña
+            <input id="auth-password" type="password" autocomplete="current-password" minlength="6" required>
+          </label>
+          <button type="submit" name="auth-action" value="signin">Iniciar sesión</button>
+          <button type="submit" name="auth-action" value="signup" class="secondary">Crear cuenta</button>
+          <p id="auth-status" class="muted" aria-live="polite"></p>
+        </form>
+        <p>
+          <button id="export-local-data" type="button" class="secondary">Exportar datos locales</button>
+        </p>
+        <div id="account-info" hidden>
+          <p>Sesión iniciada como <strong id="account-email"></strong>.</p>
+          <button id="sign-out" type="button" class="secondary">Cerrar sesión</button>
+        </div>
+      </section>
+
+      <div id="app-content" hidden>
       <section aria-labelledby="mes-titulo">
         <h2 id="mes-titulo">Mes a liquidar</h2>
         <p class="muted">
@@ -108,6 +134,7 @@
         <div id="history"></div>
       </section>
 
+      </div>
       <div id="toast" class="toast" hidden></div>
     </main>
 

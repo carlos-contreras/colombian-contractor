@@ -36,6 +36,12 @@ import {
 } from "./format.js";
 import { hasOfficialSmmlv, loadYearParams } from "./gov.js";
 import * as store from "./store.js";
+import {
+  getAuthSession,
+  signIn,
+  signOut,
+  signUp,
+} from "./supabase.js";
 
 /** @type {Record<WarningCode, string>} */
 const WARNING_TEXT = {
@@ -78,9 +84,28 @@ const els = {
   storageStatus: /** @type {HTMLElement} */ (document.querySelector("#storage-status")),
 };
 
+let calculatorStarted = false;
+
 init();
 
 async function init() {
+  bindAuth();
+  try {
+    const session = await getAuthSession();
+    if (!session) {
+      showSignedOut();
+      return;
+    }
+    await startCalculator(session);
+  } catch (error) {
+    showSignedOut(errorMessage(error));
+  }
+}
+
+async function startCalculator(session) {
+  if (calculatorStarted) return;
+  calculatorStarted = true;
+  showSignedIn(session.user.email ?? "");
   fillYearMonthSelects();
   bindPeriodAndParams();
   installPersistenceGuards();
@@ -151,11 +176,95 @@ async function init() {
   const storageMode = typeof store.storageMode === "function"
     ? await store.storageMode()
     : "memory";
-  if (storageMode === "indexeddb") {
+  if (storageMode === "supabase") {
+    els.storageStatus.textContent = "Datos sincronizados con Supabase.";
+  } else if (storageMode === "indexeddb") {
     els.storageStatus.textContent = "Almacenamiento local activo (IndexedDB).";
   } else {
-    els.storageStatus.textContent = "Aviso: IndexedDB no está disponible; los datos se perderán al recargar. Usa el respaldo JSON.";
+    els.storageStatus.textContent = "Aviso: no hay almacenamiento persistente disponible; usa el respaldo JSON.";
   }
+}
+
+function bindAuth() {
+  const form = document.querySelector("#auth-form");
+  const signOutButton = document.querySelector("#sign-out");
+  const exportLocalButton = document.querySelector("#export-local-data");
+  if (form instanceof HTMLFormElement && !form.dataset.listener) {
+    form.dataset.listener = "1";
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const email = /** @type {HTMLInputElement} */ (document.querySelector("#auth-email")).value.trim();
+      const password = /** @type {HTMLInputElement} */ (document.querySelector("#auth-password")).value;
+      const action = event.submitter instanceof HTMLButtonElement ? event.submitter.value : "signin";
+      setAuthStatus("Conectando…");
+      try {
+        const response = action === "signup"
+          ? await signUp(email, password)
+          : await signIn(email, password);
+        if (response.error) throw response.error;
+        if (!response.data?.session) {
+          setAuthStatus("Cuenta creada. Revisa tu correo para confirmar la cuenta y luego inicia sesión.");
+          return;
+        }
+        await startCalculator(response.data.session);
+      } catch (error) {
+        setAuthStatus(errorMessage(error));
+      }
+    });
+  }
+  if (signOutButton instanceof HTMLButtonElement && !signOutButton.dataset.listener) {
+    signOutButton.dataset.listener = "1";
+    signOutButton.addEventListener("click", async () => {
+      await signOut();
+      window.location.reload();
+    });
+  }
+  if (exportLocalButton instanceof HTMLButtonElement && !exportLocalButton.dataset.listener) {
+    exportLocalButton.dataset.listener = "1";
+    exportLocalButton.addEventListener("click", onExportLocalData);
+  }
+}
+
+function showSignedOut(message = "") {
+  const authSection = document.querySelector("#auth-section");
+  const form = document.querySelector("#auth-form");
+  const account = document.querySelector("#account-info");
+  const content = document.querySelector("#app-content");
+  const exportLocalButton = document.querySelector("#export-local-data");
+  authSection?.removeAttribute("hidden");
+  form?.removeAttribute("hidden");
+  account?.setAttribute("hidden", "");
+  exportLocalButton?.removeAttribute("hidden");
+  content?.setAttribute("hidden", "");
+  if (message) setAuthStatus(message);
+}
+
+function showSignedIn(email) {
+  const authSection = document.querySelector("#auth-section");
+  const form = document.querySelector("#auth-form");
+  const account = document.querySelector("#account-info");
+  const content = document.querySelector("#app-content");
+  const exportLocalButton = document.querySelector("#export-local-data");
+  const emailElement = document.querySelector("#account-email");
+  authSection?.removeAttribute("hidden");
+  form?.setAttribute("hidden", "");
+  account?.removeAttribute("hidden");
+  exportLocalButton?.setAttribute("hidden", "");
+  content?.removeAttribute("hidden");
+  if (emailElement) emailElement.textContent = email;
+}
+
+function setAuthStatus(message) {
+  const status = document.querySelector("#auth-status");
+  if (status) status.textContent = message;
+}
+
+/** @param {unknown} error */
+function errorMessage(error) {
+  if (error && typeof error === "object" && "message" in error) {
+    return String(error.message);
+  }
+  return "No se pudo conectar con Supabase.";
 }
 
 function installPersistenceGuards() {
@@ -415,18 +524,33 @@ function showToast(message) {
   }, 2200);
 }
 
+async function onExportLocalData() {
+  try {
+    const payload = await store.exportAll();
+    downloadArchive(payload, `colombian-contractor-local-${new Date().toISOString().slice(0, 10)}.json`);
+    setAuthStatus("Respaldo local exportado.");
+  } catch (error) {
+    setAuthStatus(errorMessage(error));
+  }
+}
+
 async function onExportData() {
   // Include the current unsaved form, including any note, in the backup.
   await saveCurrentMonth();
   const payload = await store.exportAll();
+  downloadArchive(payload, `colombian-contractor-respaldo-${new Date().toISOString().slice(0, 10)}.json`);
+  showToast("Respaldo exportado");
+}
+
+/** @param {object} payload @param {string} filename */
+function downloadArchive(payload, filename) {
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `colombian-contractor-respaldo-${new Date().toISOString().slice(0, 10)}.json`;
+  link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
-  showToast("Respaldo exportado");
 }
 
 /** @param {Event} event */

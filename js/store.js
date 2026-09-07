@@ -1,5 +1,8 @@
 // @ts-check
 
+import { getSupabaseContext } from "./supabase.js";
+import * as supabaseStore from "./store-supabase.js";
+
 /**
  * Persistence boundary. Uses IndexedDB in browsers and an in-memory fallback in
  * environments without IndexedDB (including the Node test runner).
@@ -53,8 +56,9 @@ function hasIndexedDb() {
   return typeof globalThis.indexedDB !== "undefined";
 }
 
-/** @returns {Promise<"indexeddb" | "memory">} */
+/** @returns {Promise<"supabase" | "indexeddb" | "memory">} */
 export async function storageMode() {
+  if (await getSupabaseContext()) return "supabase";
   return (await getDb()) ? "indexeddb" : "memory";
 }
 
@@ -144,6 +148,8 @@ function clone(value) {
 
 /** @returns {Promise<MonthSummary[]>} */
 export async function listMonths() {
+  const context = await getSupabaseContext();
+  if (context) return supabaseStore.listMonths(context);
   const rows = await withStore(STORE_MONTHS, "readonly", (store, resolve, reject) => {
     const request = store.getAll();
     request.onsuccess = () => resolve(request.result);
@@ -161,6 +167,8 @@ export async function listMonths() {
 
 /** @param {string} yearMonth @returns {Promise<MonthRecord | null>} */
 export async function getMonth(yearMonth) {
+  const context = await getSupabaseContext();
+  if (context) return supabaseStore.getMonth(context, yearMonth);
   const row = await withStore(STORE_MONTHS, "readonly", (store, resolve, reject) => {
     const request = store.get(yearMonth);
     request.onsuccess = () => resolve(request.result ?? null);
@@ -173,7 +181,9 @@ export async function getMonth(yearMonth) {
 
 /** @param {string} yearMonth @param {MonthRecord} data @returns {Promise<void>} */
 export async function saveMonth(yearMonth, data) {
+  const context = await getSupabaseContext();
   const record = clone({ ...data, yearMonth });
+  if (context) return supabaseStore.saveMonth(context, yearMonth, record);
   const result = await withStore(STORE_MONTHS, "readwrite", (store, resolve, reject) => {
     const request = store.put(record);
     request.onsuccess = () => resolve(undefined);
@@ -184,6 +194,8 @@ export async function saveMonth(yearMonth, data) {
 
 /** @param {string} yearMonth @returns {Promise<void>} */
 export async function deleteMonth(yearMonth) {
+  const context = await getSupabaseContext();
+  if (context) return supabaseStore.deleteMonth(context, yearMonth);
   const result = await withStore(STORE_MONTHS, "readwrite", (store, resolve, reject) => {
     const request = store.delete(yearMonth);
     request.onsuccess = () => resolve(undefined);
@@ -194,6 +206,8 @@ export async function deleteMonth(yearMonth) {
 
 /** @returns {Promise<ExportPayload>} */
 export async function exportAll() {
+  const context = await getSupabaseContext();
+  if (context) return supabaseStore.exportAll(context);
   const [months, yearParams, trms, trmMonthsLoaded] = await Promise.all([
     allFrom(STORE_MONTHS),
     allFrom(STORE_YEAR_PARAMS),
@@ -220,6 +234,11 @@ function allFrom(storeName) {
 
 /** @param {ExportPayload} payload @returns {Promise<void>} */
 export async function importAll(payload) {
+  const context = await getSupabaseContext();
+  if (context) {
+    if (payload) await supabaseStore.importAll(context, payload);
+    return;
+  }
   await clearAll();
   if (!payload) return;
   const db = await getDb();
@@ -259,6 +278,8 @@ function putMany(storeName, rows) {
 
 /** @returns {Promise<void>} */
 export async function clearAll() {
+  const context = await getSupabaseContext();
+  if (context) return supabaseStore.clearAll(context);
   const db = await getDb();
   if (db) {
     await Promise.all([STORE_MONTHS, STORE_YEAR_PARAMS, STORE_TRMS, STORE_TRM_MONTHS].map((name) =>
@@ -277,6 +298,8 @@ export async function clearAll() {
 
 /** @param {number} year @returns {Promise<YearParams | null>} */
 export async function getYearParams(year) {
+  const context = await getSupabaseContext();
+  if (context) return supabaseStore.getYearParams(context, year);
   const row = await withStore(STORE_YEAR_PARAMS, "readonly", (store, resolve, reject) => {
     const request = store.get(year);
     request.onsuccess = () => resolve(request.result ?? null);
@@ -289,7 +312,9 @@ export async function getYearParams(year) {
 
 /** @param {number} year @param {YearParams} params @returns {Promise<void>} */
 export async function saveYearParams(year, params) {
+  const context = await getSupabaseContext();
   const row = clone({ ...params, year });
+  if (context) return supabaseStore.saveYearParams(context, year, row);
   const result = await withStore(STORE_YEAR_PARAMS, "readwrite", (store, resolve, reject) => {
     const request = store.put(row);
     request.onsuccess = () => resolve(undefined);
@@ -300,6 +325,8 @@ export async function saveYearParams(year, params) {
 
 /** @param {string} isoDate @returns {Promise<TrmQuote | null>} */
 export async function getCachedTrm(isoDate) {
+  const context = await getSupabaseContext();
+  if (context) return supabaseStore.getCachedTrm(context, isoDate);
   const row = await withStore(STORE_TRMS, "readonly", (store, resolve, reject) => {
     const request = store.get(isoDate);
     request.onsuccess = () => resolve(request.result ?? null);
@@ -312,6 +339,8 @@ export async function getCachedTrm(isoDate) {
 
 /** @param {TrmQuote[]} quotes @returns {Promise<void>} */
 export async function putTrms(quotes) {
+  const context = await getSupabaseContext();
+  if (context) return supabaseStore.putTrms(context, quotes);
   await putMany(STORE_TRMS, quotes);
   if (!(await getDb())) {
     for (const quote of quotes) if (quote?.date) memoryTrms.set(quote.date, clone(quote));
@@ -320,6 +349,8 @@ export async function putTrms(quotes) {
 
 /** @param {string} yearMonth @returns {Promise<boolean>} */
 export async function isTrmMonthLoaded(yearMonth) {
+  const context = await getSupabaseContext();
+  if (context) return supabaseStore.isTrmMonthLoaded(context, yearMonth);
   const row = await withStore(STORE_TRM_MONTHS, "readonly", (store, resolve, reject) => {
     const request = store.get(yearMonth);
     request.onsuccess = () => resolve(request.result ?? null);
@@ -331,6 +362,8 @@ export async function isTrmMonthLoaded(yearMonth) {
 
 /** @param {string} yearMonth @returns {Promise<void>} */
 export async function markTrmMonthLoaded(yearMonth) {
+  const context = await getSupabaseContext();
+  if (context) return supabaseStore.markTrmMonthLoaded(context, yearMonth);
   const result = await withStore(STORE_TRM_MONTHS, "readwrite", (store, resolve, reject) => {
     const request = store.put({ yearMonth });
     request.onsuccess = () => resolve(undefined);
@@ -341,6 +374,8 @@ export async function markTrmMonthLoaded(yearMonth) {
 
 /** @param {string} yearMonth @returns {Promise<TrmQuote[]>} */
 export async function listTrmsForMonth(yearMonth) {
+  const context = await getSupabaseContext();
+  if (context) return supabaseStore.listTrmsForMonth(context, yearMonth);
   const prefix = `${yearMonth}-`;
   const rows = await allFrom(STORE_TRMS);
   const quotes = rows ?? [...memoryTrms.values()];

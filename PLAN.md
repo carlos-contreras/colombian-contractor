@@ -13,7 +13,7 @@ This project is a **monthly IBC calculator** for all income sources, so the user
 
 ## Users and constraints
 
-- Single user (the project owner), running locally in a browser.
+- Initially one authenticated user, with cloud sync through Supabase and static hosting.
 - Spanish Colombia money (COP), monthly cadence.
 - Must stay understandable: show the math, not only a final number.
 - No accounts, no server, no sensitive data leaving the machine.
@@ -98,7 +98,7 @@ Single-page app.
 - List of saved months with IBC and total contributions.
 - Copy last month’s sources into the current month.
 
-**Persistence (v1, decided):** IndexedDB via a `store` API. JSON export/import, SQLite, and a public backend are deferred — see [TODOS.md](./TODOS.md).
+**Persistence decision:** Supabase Auth/Postgres is the authenticated source of truth behind the `store` API. JSON export/import remains the portable backup and migration format. IndexedDB remains only as a local migration/fallback path; SQLite is deferred.
 
 ## Calculation sketch (v1)
 
@@ -163,7 +163,7 @@ Vanilla **ES modules** + **JSDoc**. Details and dependency rules: [ARCHITECTURE.
 colombian-contractor/
   README.md
   PLAN.md
-  TODOS.md            # deferred SQLite/public backend work
+  TODOS.md            # remaining hardening and deferred SQLite work
   ARCHITECTURE.md     # modules, types, store boundary
   package.json        # { "type": "module" }; node --test — no runtime deps
   test/*.test.js
@@ -176,7 +176,9 @@ colombian-contractor/
     trm.js            # TRM for a date or a whole month
     gov.js            # SMMLV decree table + statutory rates
     ugpp.js           # 40% constant + presunción de costos
-    store.js          # IndexedDB adapter + in-memory fallback; JSON archive API
+    store.js          # store façade; Supabase/IndexedDB adapters + JSON archive API
+    store-supabase.js # Supabase Postgres adapter
+    supabase.js       # Supabase client and Auth helpers
     format.js         # COP / dates
 ```
 
@@ -192,8 +194,10 @@ colombian-contractor/
 - [x] Local git repo
 - [x] README.md
 - [x] PLAN.md
-- [x] Persistence: v1 = IndexedDB; later work in TODOS.md
-- [x] TODOS.md (JSON archive, store API, no SQLite in v1, public SQLite/Postgres)
+- [x] Persistence boundary via `store.js`
+- [x] Supabase Auth/Postgres adapter and RLS schema
+- [x] JSON archive preserved across storage backends
+- [x] TODOS.md (JSON archive, store API, Supabase, deferred SQLite)
 - [x] ARCHITECTURE.md (ES modules + JSDoc, Pico.css)
 - [x] Unit tests: `node --test` (`test/trm.test.js`)
 - [ ] Research checkpoint: answer the six open questions and write them into `rules` notes
@@ -212,11 +216,14 @@ colombian-contractor/
 
 ### Phase 2 — Persistence and history
 
-- [x] `store.js` API + IndexedDB adapter
-- [x] Save months across browser refreshes
+- [x] `store.js` API + Supabase adapter
+- [x] Supabase Auth and per-user RLS schema
+- [x] Save months across refreshes and devices
 - [x] Duplicate previous month
 - [x] JSON export/import (personal archive)
 - [x] Year parameter presets (2025, 2026, …)
+- [ ] Apply and verify the archive replacement RPC in the hosted project
+- [ ] End-to-end test with two users to verify RLS isolation
 
 ### Phase 3 — Hardening
 
@@ -300,34 +307,24 @@ So: **working memory** can live in the browser. **Source of truth** for years of
 - Right answer only when there is a public product with accounts.
 - Wrong for “runs on my machine, no deployment.”
 
-### Public internet later — what actually has to change
+### Hosted persistence decision
 
-Going public is not “JSON too slow, switch to SQL.” It is:
+The project now uses Supabase for:
 
 1. Authentication and per-user isolation
-2. A server that accepts writes
-3. Backups and migrations
-4. HTTPS, rate limits, not trusting the client for money math display vs stored inputs
+2. Postgres persistence for months, year parameters, and TRM cache
+3. RLS policies and migrations
+4. Cross-device access from GitHub Pages
 
-JSON-on-disk will not scale to that. IndexedDB will not either. SQLite *can* be that first server database. Postgres is the usual next step.
+The way to keep the calculator replaceable is unchanged: **all UI code talks to `store.js`** (`listMonths`, `getMonth`, `saveMonth`, `exportAll`, `importAll`). Supabase is an adapter behind that boundary; `rules.js` remains pure.
 
-The way to avoid a rewrite: **all UI code talks to `store.js`** (`listMonths`, `getMonth`, `saveMonth`, `exportAll`, `importAll`). Swap the adapter; keep `rules.js`.
-
-### Recommendation (accepted)
-
-1. **v1:** IndexedDB as working storage; static HTML/CSS/JS; no extra process.
-2. **JSON export/import** as the long-term personal archive.
-3. **`store` interface** so the engine is replaceable.
-4. **No SQLite or local server in v1.**
-5. **If/when public:** small backend, SQLite first, Postgres only if load requires it.
-
-Items 2–5 are tracked in [TODOS.md](./TODOS.md).
-
-**Do not do this yet:** WASM SQLite, PocketBase, or Postgres.
+JSON export/import remains an independent backup and migration path. SQLite, WASM SQLite, and PocketBase remain deferred.
 
 ### Decision
 
-- [x] Owner choice: **v1 IndexedDB** (recommendation item 1). Items 2–5 deferred in TODOS.md.
+- [x] Owner choice: **Supabase Auth/Postgres** as the authenticated source of truth.
+- [x] JSON export/import preserved across storage backends.
+- [x] IndexedDB retained for local migration and fallback tests.
 
 ## Next step
 

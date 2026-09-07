@@ -1,6 +1,6 @@
 # ARCHITECTURE — Colombian Contractor
 
-How the app is structured. Product scope and completed persistence work stay in [PLAN.md](./PLAN.md); deferred backend work stays in [TODOS.md](./TODOS.md).
+How the app is structured. Product scope and completed persistence work stay in [PLAN.md](./PLAN.md); remaining operational work stays in [TODOS.md](./TODOS.md).
 
 **Decision:** vanilla **ES modules** + **JSDoc**. CSS: **Pico.css** (vendored) + a thin `css/style.css`. No bundler, no TypeScript compiler, no UI framework.
 
@@ -16,7 +16,7 @@ The work is a monthly calculator with a replaceable store, not a component tree.
 | Honorarios factor | `js/ugpp.js` | 40% constant or 1 − UGPP costos |
 | Year figures | `js/gov.js` | SMMLV table + statutory salud/pensión |
 | USD → COP | `js/trm.js` | Official TRM lookup + `usdToCopPesos` |
-| Persistence | `js/store.js` | IndexedDB adapter with in-memory fallback; JSON export/import |
+| Persistence | `js/store.js`, `js/store-supabase.js` | Supabase Auth/Postgres adapter; IndexedDB fallback for local migration/tests; JSON export/import |
 | COP / dates | `js/format.js` | None |
 | Month form + results | `js/app.js` | Low for v1 (one view + history) |
 | Look and form chrome | Pico.css + `css/style.css` | Pico is the base; we do not add Tailwind/Bootstrap |
@@ -30,7 +30,7 @@ Revisit Vue/Svelte/React or `tsc` only if the DOM layer or the type surface actu
 ## Runtime constraints
 
 - **No build.** Browsers load `js/*.js` as written.
-- **No npm required for v1.**
+- **No npm required for the browser app.** Supabase JS is loaded as a browser module from `esm.sh`; Node tests continue to use the local fallback.
 - **ES modules need HTTP.** `file://` blocks `import`. Locally, serve the folder (for example `python -m http.server`) and open `http://localhost:8000`. That is a static file server, not an application backend. **GitHub Pages** (HTTPS) satisfies the same requirement.
 - **UI language:** Spanish (Colombia). This file stays in English.
 - **Money:** integer **COP pesos** in logic and storage. Format only at the edge (`format.js`). Do not round through `Number` floats for pesos.
@@ -62,7 +62,9 @@ colombian-contractor/
     trm.js            # official TRM for a date or a whole month; USD → integer COP
     gov.js            # year params (SMMLV table + statutory rates); no extra hosts
     ugpp.js           # honorarios 40% constant + UGPP presunción de costos
-    store.js          # persistence API + IndexedDB adapter
+    store.js          # persistence API and backend selection
+    store-supabase.js # Supabase Postgres adapter
+    supabase.js       # Supabase client and Auth helpers
     format.js         # COP, year-month, display strings
 ```
 
@@ -85,7 +87,8 @@ index.html
             ├── trm.js
             ├── gov.js → rules.js  (paramsForYear only)
             ├── ugpp.js            # types only from rules.js (JSDoc)
-            ├── store.js
+            ├── store.js → store-supabase.js → supabase.js
+            ├── supabase.js
             └── format.js
 ```
 
@@ -94,11 +97,11 @@ Rules:
 1. **`rules.js` imports nothing** in this project (no `store`, no `format`, no `trm`, no DOM). It never sees USD.
 2. **`trm.js` imports nothing** from `rules` / `store` / `format`. It may `fetch` **only** the official TRM dataset. Module cache + `store` (via `app.js`) hold month TRMs so picking a month is one request.
 2b. **`gov.js`** may import `rules.js` for `paramsForYear`. It does **not** fetch MinTrabajo/BanRep (no CORS JSON for SMMLV or IBC rates). Year snapshots go through `store`.
-3. **`store.js` does not import `rules.js` or `trm.js`.** It persists inputs (and optional snapshots). Recalculation is `app` calling `rules` (and `trm` when a line is in USD).
+3. **`store.js` does not import `rules.js` or `trm.js`.** It selects the authenticated Supabase adapter in the browser and retains IndexedDB/in-memory fallback behavior for local migration and tests. It persists inputs (and optional snapshots). Recalculation is `app` calling `rules` (and `trm` when a line is in USD).
 4. **`format.js` imports nothing** from `rules` / `store` / `trm`.
 5. **`app.js` is the only module that** queries the DOM, calls `store.*`, `rules.*`, `gov.*`, `ugpp.*`, and `trm.*`.
    Default period is the **previous** Bogotá month (PILA on last month’s income). Year dropdown loads/caches year params; month dropdown downloads that month’s TRMs once.
-6. No IndexedDB (or any storage API) outside `store.js`.
+6. No IndexedDB, Supabase, or other storage API outside `store.js` and its adapter modules.
 7. Convert USD → COP **before** `rules`. Persist the TRM date, TRM value used, USD amount, and resulting COP when that lands in `MonthRecord` — do not re-fetch TRM to rewrite old months.
 
 If a new file appears, it must sit on this graph without cycles. Shared constants that are not rules (e.g. `YYYY-MM` regex) can live in `format.js` or a tiny `js/ids.js` later — not in `app.js` copies.
@@ -243,7 +246,7 @@ Every figure shown in the UI must be traceable to an input and a named value on 
 
 ## `store.js` — persistence boundary
 
-Storage uses **IndexedDB** in browsers, with an in-memory fallback for environments without IndexedDB (such as the Node test runner). The rest of the app never sees the engine.
+Storage uses **Supabase Postgres** for authenticated browser sessions. `store.js` keeps IndexedDB as a local migration/fallback path and an in-memory fallback for environments without IndexedDB (such as the Node test runner). The rest of the app never sees the storage engine.
 
 Also caches **year params** and **TRM by date** so year/month changes do not refetch.
 
@@ -253,9 +256,11 @@ Minimum store API:
 | --- | --- |
 | `listMonths()` | Summaries for history (`yearMonth`, IBC, totals) |
 | `getMonth(yearMonth)` | Full `MonthRecord` or `null` |
-| `saveMonth(yearMonth, data)` | Upsert record |
+| `saveMonth(yearMonth, data)` | Upsert record in the active backend |
 | `deleteMonth(yearMonth)` | If the UI needs it |
-| `exportAll()` / `importAll()` | JSON archive (Phase 2) |
+| `exportAll()` / `importAll()` | JSON archive, independent of the backend |
+
+The browser uses Supabase after authentication. `months`, `year_params`, `trm_quotes`, and `trm_months` are scoped by `auth.uid()` through RLS. `importAll()` uses the transactional `replace_archive(jsonb)` RPC. The publishable key may be present in browser code; a service-role key must never be shipped.
 
 **Source of truth for a month** is `sources` + `params`. If `result` is stored, it is a cache; opening a month may recompute with stored `params` so old months do not jump when the *current* year’s SMMLV preset changes.
 
@@ -275,8 +280,9 @@ Single-page, two conceptual views (can be sections on one page):
 Behavior:
 
 - Changing sources or params re-runs `rules` and refreshes results immediately (Phase 1).
-- Save is explicit; IndexedDB persists saved months across refreshes.
-- No direct `indexedDB` / `localStorage` here.
+- Authenticated users autosave to Supabase and can access records across browsers and devices.
+- The unauthenticated screen can export old local IndexedDB data before migration.
+- No direct `indexedDB` / `localStorage` / Supabase calls here.
 
 DOM: plain `document` APIs or small helpers in `app.js`. No Vue/React/Alpine.
 
@@ -329,7 +335,7 @@ Rules:
 
 ## GitHub Pages (optional deploy)
 
-The v1 stack is a static site. GitHub Pages can host it **without changing modules, JSDoc, or IndexedDB.** No Action build is required: publish the repo (or `/docs`) as-is.
+The frontend remains a static site. GitHub Pages can host it with Supabase as the hosted backend. No build is required: publish the repo (or `/docs`) as-is. The browser-visible Supabase publishable key is protected by Auth and RLS, not by secrecy.
 
 ### What carries over
 
@@ -337,8 +343,9 @@ The v1 stack is a static site. GitHub Pages can host it **without changing modul
 | --- | --- |
 | `index.html` + vendored Pico + `css/style.css` + `js/*.js` ES modules | Works over HTTPS |
 | Relative imports (`./rules.js`, `src="js/app.js"`) | Works |
-| IndexedDB via `store.js` | Works in each visitor’s browser |
-| JSON export/import | Works (download/upload) |
+| Supabase via `store.js` | Syncs authenticated records across devices |
+| IndexedDB fallback | Supports local migration and test environments |
+| JSON export/import | Works (download/upload) and remains the portable backup |
 | `getTrm()` → datos.gov.co | Works (CORS `*`); fails offline — manual TRM still required |
 
 ### What does not magically carry over
@@ -346,8 +353,9 @@ The v1 stack is a static site. GitHub Pages can host it **without changing modul
 - **IndexedDB is per origin**, not per git repo. `http://localhost:8000` and `https://<user>.github.io` are different databases. Shipping the code does not ship months you entered locally.
 - **Project site origin** is `https://<user>.github.io` (path `/<repo>/` is not part of the origin). Name the database after this app (e.g. `colombian-contractor`) so another Pages project on the same user site cannot collide.
 - **Custom domain** = another origin = empty DB until import.
-- **Clearing site data / another browser / phone** = empty DB. JSON export remains the archive ([TODOS.md](./TODOS.md) item 2).
-- Pages cannot run SQLite, PocketBase, or any `store` adapter that needs a server. Public multi-user accounts are still TODOS item 5, not Pages.
+- **Clearing site data** removes the local session, but authenticated cloud records remain in Supabase.
+- A user must still sign in on another browser/device.
+- Pages cannot run SQLite or a local server, but it can use the hosted Supabase backend.
 
 ### Rules so Pages keeps working
 
@@ -357,7 +365,7 @@ The v1 stack is a static site. GitHub Pages can host it **without changing modul
 4. **Do not commit export JSON** with real income. The repo can be public; the records must not.
 5. A public Pages URL is still an **aid**, not advice (README legal note). Other people’s data never hits GitHub — only their browser.
 
-Local-first remains the default. Pages is the same artifacts on HTTPS, not a second architecture.
+Supabase is the authenticated source of truth. Pages is the same static frontend on HTTPS, not a second architecture.
 
 ---
 
@@ -371,8 +379,8 @@ Do not add these without updating this file:
 - Jest, Vitest, Mocha, or any npm test runner (`node --test` only)
 - Tailwind, Bootstrap, or a second CSS framework (Pico is the base)
 - `rules.js` depending on storage or the DOM
-- SQLite, WASM SQLite, PocketBase, or any local app server
-- Network calls **other than** official TRM in `js/trm.js`
+- SQLite, WASM SQLite, PocketBase, or any replacement backend without updating the store boundary
+- Network calls outside `js/trm.js` and the Supabase client/adapter
 - Feeding USD into `rules.js` without converting via TRM (or a manual rate) first
 
-JSON export, a different `store` adapter, and a public backend are persistence evolutions behind `store.js`, not a new UI architecture. See [TODOS.md](./TODOS.md).
+JSON export, the IndexedDB fallback, and the Supabase adapter are persistence evolutions behind `store.js`, not a new UI architecture. See [TODOS.md](./TODOS.md).

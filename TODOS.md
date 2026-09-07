@@ -1,14 +1,14 @@
 # TODOs — persistence and future backends
 
-**Current state:** Phase 2 local persistence is implemented. The app uses IndexedDB with JSON backups and an in-memory fallback when IndexedDB is unavailable.
+**Current state:** Supabase Auth/Postgres is the authenticated source of truth. The static frontend uses `store.js` with Supabase, JSON backups, and an IndexedDB fallback for local migration/tests.
 
-Keep the static, single-user architecture until a real need for a server or multi-user accounts appears.
+Keep the static frontend architecture. Supabase provides the hosted backend and RLS provides per-user isolation.
 
 ---
 
 ## 1. JSON export / import (personal archive)
 
-IndexedDB dies with site data, another browser, or a new machine. A JSON file the owner keeps is the long-term record.
+Supabase provides cross-device persistence, but a JSON file remains the independent long-term backup and migration format.
 
 **Status:** Implemented. Import replaces all existing data.
 
@@ -36,7 +36,7 @@ Not in this item: silent writes to a disk path, File System Access API, or split
 
 ## 3. `store` interface (replaceable engine)
 
-UI and `rules.js` must not call IndexedDB (or any future DB) directly. One adapter keeps a future SQLite/API swap from becoming a rewrite.
+UI and `rules.js` must not call IndexedDB, Supabase, or any future database directly. The store boundary keeps the calculation engine independent from the persistence backend.
 
 **Status:** Implemented.
 
@@ -47,33 +47,31 @@ UI and `rules.js` must not call IndexedDB (or any future DB) directly. One adapt
   - `saveMonth(yearMonth, data)`
   - `deleteMonth(yearMonth)`
   - `exportAll()` / `importAll()`
-- [x] IndexedDB as the first implementation behind that API
-- [x] No IndexedDB calls from `app.js`
+- [x] Supabase adapter behind that API
+- [x] IndexedDB fallback/local migration path
+- [x] No storage calls from `app.js`
 
 ---
 
-## 4. SQLite / local server — deferred
+## 4. Supabase hosted persistence
 
-Do **not** add SQLite, WASM SQLite, PocketBase, or a local Node/Python process while the app is a static page.
+**Status:** Implemented in the frontend and database migration files.
 
-**Trigger:** owner wants a real file on disk more than “just open `index.html`,” or we start work on a public backend (item 5).
-
-- [ ] Keep v1 free of SQLite and extra processes
-- [ ] When triggered: new adapter in `store.js` (same API), SQLite file as source of truth
-- [ ] Keep JSON export as portable backup even after SQLite exists
+- [x] Supabase Auth client and sign-in/sign-up UI
+- [x] Supabase Postgres adapter behind `store.js`
+- [x] Per-user RLS policies
+- [x] Database baseline migration (`supabase/migrations/001_initial.sql`)
+- [x] Atomic JSON archive replacement RPC (`002_replace_archive.sql`)
+- [x] JSON export/import preserved
+- [ ] Run/verify the RPC in the hosted project
+- [ ] Test two authenticated users for RLS isolation
+- [ ] Add explicit sync failure/last-saved UI
+- [ ] Add Supabase integration tests against a non-production project
 
 ---
 
-## 5. Public internet
+## 5. SQLite / local server — deferred
 
-Going public is auth + a server, not a faster browser DB.
+SQLite, WASM SQLite, PocketBase, and a local Node/Python process remain out of scope. Supabase currently provides the hosted Postgres backend while keeping the frontend static.
 
-**Trigger:** we actually want other people to have accounts.
-
-- [ ] Small backend behind the same `store` API
-- [ ] First database: **SQLite**
-- [ ] Auth and per-user isolation
-- [ ] HTTPS, backups, migrations
-- [ ] Postgres only if multi-user load requires it
-
-Out of scope until this trigger: WASM SQLite, PocketBase, hosted Postgres “just in case.”
+If Supabase is ever replaced, implement another adapter behind the existing `store` API and keep JSON export/import as the portable backup.
