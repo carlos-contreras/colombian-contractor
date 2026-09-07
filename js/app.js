@@ -111,11 +111,12 @@ async function init() {
     toggleParamsBtn.addEventListener("click", () => {
       if (paramsSection.hasAttribute("hidden")) {
         paramsSection.removeAttribute("hidden");
-        toggleParamsBtn.textContent = "Ocultar parámetros del año";
+        toggleParamsBtn.textContent = "Guardar parámetros del año";
       } else {
         paramsSection.setAttribute("hidden", "");
-        toggleParamsBtn.textContent = "Mostrar parámetros del año";
+        toggleParamsBtn.textContent = "Editar parámetros del año";
       }
+      updateParamsSummary();
     });
   }
 
@@ -125,6 +126,14 @@ async function init() {
   els.sources.addEventListener("change", onSourcesChange);
   els.sources.addEventListener("input", onSourcesInput);
   els.sources.addEventListener("blur", onSourcesBlur, true);
+
+  els.history.addEventListener("click", async (e) => {
+    const btn = e.target.closest("button[data-load]");
+    if (btn) {
+      await loadMonth(btn.dataset.load);
+    }
+  });
+
   await loadPeriod({ resetSources: true });
   await renderHistory();
 }
@@ -309,6 +318,17 @@ async function onSave() {
     result,
   });
   await renderHistory();
+  showToast("Mes guardado");
+}
+
+function showToast(message) {
+  const toast = document.querySelector("#toast");
+  if (!toast) return;
+  toast.textContent = message;
+  toast.removeAttribute("hidden");
+  setTimeout(() => {
+    toast.setAttribute("hidden", "");
+  }, 2200);
 }
 
 async function onCopyPrevious() {
@@ -461,7 +481,7 @@ function onSourcesInput(event) {
     void applyTrmDate(source, article);
   }
   if (field === "trm") {
-    source.trm = Number(target.value) || 0;
+    source.trm = parseUsd(target.value);
     if (source.usd != null && source.trm > 0) {
       source.amount = usdToCopPesos(source.usd, source.trm);
     }
@@ -476,16 +496,23 @@ function onSourcesInput(event) {
 function onSourcesBlur(event) {
   const target = /** @type {HTMLElement} */ (event.target);
   if (!(target instanceof HTMLInputElement)) return;
-  if (target.dataset.field !== "amount") return;
+
+  const field = target.dataset.field;
+  if (field !== "amount" && field !== "usd" && field !== "trm") return;
 
   const article = target.closest("article");
   if (!article || !article.dataset.id) return;
   const source = sources.find((row) => row.id === article.dataset.id);
   if (!source) return;
 
-  // Re-format on blur for better UX
-  if (source.amount > 0) {
+  if (field === "amount" && source.amount > 0) {
     target.value = formatCop(source.amount);
+  }
+  if (field === "usd" && source.usd != null) {
+    target.value = formatUsd(source.usd);
+  }
+  if (field === "trm" && source.trm != null) {
+    target.value = formatUsd(source.trm);
   }
 }
 
@@ -509,7 +536,11 @@ async function applyTrmDate(source, article) {
           : "No hay TRM en caché. Escríbela a mano.";
       if (status) status.textContent = message;
       const trmInput = article.querySelector("[data-field=trm]");
-      if (trmInput instanceof HTMLInputElement) trmInput.readOnly = false;
+      if (trmInput instanceof HTMLInputElement) {
+        trmInput.readOnly = false;
+        trmInput.removeAttribute("aria-readonly");
+        trmInput.removeAttribute("title");
+      }
       return;
     }
   }
@@ -517,8 +548,10 @@ async function applyTrmDate(source, article) {
   source.trm = quote.value;
   const trmInput = article.querySelector("[data-field=trm]");
   if (trmInput instanceof HTMLInputElement) {
-    trmInput.value = String(quote.value);
+    trmInput.value = formatUsd(quote.value);
     trmInput.readOnly = true;
+    trmInput.setAttribute("aria-readonly", "true");
+    trmInput.title = "TRM oficial cargada; cambia la fecha para consultar otra tasa";
   }
   if (source.usd != null && source.trm > 0) {
     source.amount = usdToCopPesos(source.usd, source.trm);
@@ -538,14 +571,31 @@ function trmErrorText(err) {
   return "No se pudo leer la TRM. Escríbela a mano.";
 }
 
+function updateParamsSummary() {
+  const summaryEl = document.querySelector("#params-summary");
+  if (!summaryEl) return;
+  const paramsSection = document.querySelector("#params-section");
+  const isHidden = paramsSection && paramsSection.hasAttribute("hidden");
+  if (isHidden) {
+    summaryEl.textContent = `SMMLV ${formatCop(params.smmlv)} · Salud ${(params.saludRate * 100).toFixed(1)}% · Pensión ${(params.pensionRate * 100).toFixed(1)}%`;
+  } else {
+    summaryEl.textContent = "";
+  }
+}
+
 function fillParamsForm() {
   els.smmlv.value = formatCop(params.smmlv);
   els.salud.value = String(params.saludRate * 100);
   els.pension.value = String(params.pensionRate * 100);
   // els.arl removed (now per-source)
+  updateParamsSummary();
 }
 
 function renderSources() {
+  if (sources.length === 0) {
+    els.sources.innerHTML = '<p class="muted">No hay fuentes de ingreso. Agrega una para comenzar.</p>';
+    return;
+  }
   els.sources.replaceChildren(...sources.map(sourceArticle));
 }
 
@@ -557,6 +607,7 @@ function sourceArticle(source) {
   article.className = "source";
   article.dataset.id = source.id;
   const usd = source.currency === "USD";
+  const trmLocked = trmFieldLocked(source);
   article.innerHTML = `
     <header>
       <h3>${escapeHtml(source.label || labelForType(source.type))}</h3>
@@ -588,7 +639,7 @@ function sourceArticle(source) {
           ? `
       <label>
         Monto USD
-        <input data-field="usd" type="text" inputmode="decimal" value="${escapeAttr(source.usd ? String(source.usd) : "")}" autocomplete="off">
+        <input data-field="usd" type="text" inputmode="decimal" value="${source.usd != null ? escapeAttr(formatUsd(source.usd)) : ""}" autocomplete="off">
       </label>
       <label>
         Fecha TRM
@@ -596,7 +647,8 @@ function sourceArticle(source) {
       </label>
       <label>
         TRM (COP por USD)
-        <input data-field="trm" type="number" min="0" step="0.01" value="${source.trm ?? ""}"${trmFieldLocked(source) ? " readonly" : ""}>
+        <input data-field="trm" type="text" inputmode="decimal" value="${source.trm != null ? escapeAttr(formatUsd(source.trm)) : ""}"${trmLocked ? " readonly aria-readonly=\"true\" title=\"TRM oficial cargada; cambia la fecha para consultar otra tasa\"" : ""}>
+        ${trmLocked ? '<small class="muted">TRM oficial cargada; no editable.</small>' : ""}
       </label>
       `
           : `
@@ -664,12 +716,20 @@ function copHint(source) {
  * @param {IncomeSource} source
  */
 function trmFieldLocked(source) {
-  return Boolean(source.trmDate && trmCachedDates.has(source.trmDate));
+  return Boolean(
+    source.trm != null &&
+      source.trmDate &&
+      trmCachedDates.has(source.trmDate),
+  );
 }
 
 function renderResults() {
   for (const source of sources) syncSourceFactor(source);
   const result = computeMonth(sources, params);
+
+  // Disable save button if no positive amounts
+  const hasData = sources.some((s) => (s.amount || 0) > 0);
+  if (els.save) els.save.disabled = !hasData;
   if (result.warnings.length > 0) {
     els.warnings.className = "warnings";
     els.warnings.innerHTML = result.warnings
@@ -732,7 +792,7 @@ async function renderHistory() {
     return;
   }
   els.history.innerHTML = `<table>
-    <thead><tr><th>Mes</th><th>IBC</th><th>Aportes</th></tr></thead>
+    <thead><tr><th>Mes</th><th>IBC</th><th>Aportes</th><th></th></tr></thead>
     <tbody>
       ${summaries
         .map(
@@ -740,11 +800,26 @@ async function renderHistory() {
             <td>${escapeHtml(formatYearMonth(row.yearMonth))}</td>
             <td class="money">${formatCop(row.ibcFinal)}</td>
             <td class="money">${formatCop(row.totalContributions)}</td>
+            <td><button type="button" class="secondary" data-load="${row.yearMonth}">Cargar</button></td>
           </tr>`,
         )
         .join("")}
     </tbody>
   </table>`;
+}
+
+async function loadMonth(yearMonthToLoad) {
+  const record = await store.getMonth(yearMonthToLoad);
+  if (!record) return;
+  yearMonth = yearMonthToLoad;
+  sources = record.sources.map((row) => structuredClone(row));
+  params = structuredClone(record.params);
+  els.year.value = yearMonth.slice(0, 4);
+  els.month.value = yearMonth.slice(5, 7);
+  fillParamsForm();
+  renderSources();
+  renderResults();
+  updateParamsSummary();
 }
 
 /**
@@ -801,8 +876,8 @@ function honorariosFields(source) {
           : ""
       }
       <div class="legend">
-        <p><strong>Sin presunción:</strong> regla general del independiente. El IBC es el <strong>40&nbsp;%</strong> del ingreso (el 60&nbsp;% se trata como costo). Úsala si no aplicas tabla UGPP.</p>
-        <p><strong>Con presunción (UGPP):</strong> la UGPP presume un porcentaje de costos según la <strong>actividad</strong>. El IBC es lo que queda (100&nbsp;% − costos). Elige esto solo si vas a cotizar con esa tabla; después aparece la actividad.</p>
+        <p><strong>Sin presunción:</strong> regla general del independiente que no subcontrata o que no arrienda espacios, maquinaria o equipos. El IBC es el <strong>40&nbsp;%</strong> del ingreso (el 60&nbsp;% se trata como costo). Úsala si no aplicas tabla UGPP.</p>
+        <p><strong>Con presunción (UGPP):</strong> la UGPP presume un porcentaje de costos según la <strong>actividad</strong>. cuendo el independiente acarrea costos como arriendos, empleados, equipos, materias primas, etc. El IBC es lo que queda (100&nbsp;% − costos). Elige esto solo si vas a cotizar con esa tabla; después aparece la actividad.</p>
       </div>
       <label>
         Clase ARL (opcional)

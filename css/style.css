@@ -69,6 +69,11 @@ body > footer {
   border-color: var(--pico-del-color, #c23);
 }
 
+input[data-field="trm"][readonly] {
+  background-color: var(--pico-form-element-disabled-background-color, #eef0f1);
+  cursor: not-allowed;
+}
+
 .source header h3 {
   margin: 0;
   font-size: 1rem;
@@ -120,4 +125,19 @@ button.secondary {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.toast {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--pico-primary-background, #2a6b8f);
+  color: white;
+  padding: 0.6rem 1.2rem;
+  border-radius: 2rem;
+  font-size: 0.9rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  z-index: 100;
+  transition: opacity 0.3s ease;
 }

@@ -37,7 +37,8 @@
         </div>
         <p id="gov-status" class="muted" aria-live="polite"></p>
         <p>
-          <button type="button" id="toggle-params" class="secondary">Mostrar parámetros del año</button>
+          <span id="params-summary" class="muted"></span>
+          <button type="button" id="toggle-params" class="secondary">Editar parámetros</button>
         </p>
       </section>
 
@@ -100,6 +101,8 @@
         </p>
         <div id="history"></div>
       </section>
+
+      <div id="toast" class="toast" hidden></div>
     </main>
 
     <footer>
