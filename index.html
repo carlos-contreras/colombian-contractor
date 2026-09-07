@@ -65,13 +65,14 @@
           </label>
           <label>
             Tarifa salud
-            <input id="param-salud" type="number" min="0" max="1" step="0.001">
+            <input id="param-salud" type="number" min="0" max="100" step="0.5">
+            <small class="muted">%</small>
           </label>
           <label>
             Tarifa pensión
-            <input id="param-pension" type="number" min="0" max="1" step="0.001">
+            <input id="param-pension" type="number" min="0" max="100" step="0.5">
+            <small class="muted">%</small>
           </label>
-          <p class="muted">Clase ARL se elige por fuente de honorarios (opcional).</p>
           <p class="muted">FSP se calcula automáticamente si IBC de pensión ≥ 4 SMLMV (tabla Ley 100). No hace falta elegir tarifa.</p>
         </div>
       </section>

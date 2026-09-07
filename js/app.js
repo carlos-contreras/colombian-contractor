@@ -77,11 +77,14 @@ init();
 async function init() {
   fillYearMonthSelects();
   bindPeriodAndParams();
-  els.addSource.addEventListener("click", () => {
-    sources.push(blankSource("honorarios"));
-    renderSources();
-    renderResults();
-  });
+  if (!els.addSource.dataset.listener) {
+    els.addSource.dataset.listener = "1";
+    els.addSource.addEventListener("click", () => {
+      sources.push(blankSource("honorarios"));
+      renderSources();
+      renderResults();
+    });
+  }
 
   const resetBtn = document.querySelector("#reset-data");
   if (resetBtn) {
@@ -121,12 +124,12 @@ function bindPeriodAndParams() {
     renderResults();
   });
   els.salud.addEventListener("input", () => {
-    params.saludRate = Number(els.salud.value) || 0;
+    params.saludRate = (Number(els.salud.value) || 0) / 100;
     void persistYearParams();
     renderResults();
   });
   els.pension.addEventListener("input", () => {
-    params.pensionRate = Number(els.pension.value) || 0;
+    params.pensionRate = (Number(els.pension.value) || 0) / 100;
     void persistYearParams();
     renderResults();
   });
@@ -502,10 +505,9 @@ function trmErrorText(err) {
 
 function fillParamsForm() {
   els.smmlv.value = formatCop(params.smmlv);
-  els.salud.value = String(params.saludRate);
-  els.pension.value = String(params.pensionRate);
-  els.arl.value = params.arlClass;
-
+  els.salud.value = String(params.saludRate * 100);
+  els.pension.value = String(params.pensionRate * 100);
+  // els.arl removed (now per-source)
 }
 
 function renderSources() {
