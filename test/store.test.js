@@ -14,7 +14,7 @@ const params = {
 
 const record = {
   yearMonth: "2026-01",
-  sources: [{ id: "one", type: "honorarios", label: "Cliente", amount: 1_000_000, factor: 0.4 }],
+  sources: [{ id: "one", type: "honorarios", label: "Cliente", amount: 1_000_000, factor: 0.4, note: "Nota de prueba" }],
   params,
   result: { ibcFinal: 400_000, totalContributions: 114_600 },
 };

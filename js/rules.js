@@ -33,6 +33,7 @@
  * @property {number} [costAmount]  Real costs, integer COP
  * @property {"accrued" | "cash"} [rentaTiming]
  * @property {string} [arlClass]  I–V or undefined (no ARL for this line)
+ * @property {string} [note]  Free-text note for the income source
  *
  * @typedef {object} YearParams
  * @property {number} year

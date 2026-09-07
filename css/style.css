@@ -69,6 +69,15 @@ body > footer {
   border-color: var(--pico-del-color, #c23);
 }
 
+.source-note,
+.source-note-add {
+  grid-column: 1 / -1;
+}
+
+.source-note-add {
+  margin-top: 0.5rem;
+}
+
 input[data-field="trm"][readonly] {
   background-color: var(--pico-form-element-disabled-background-color, #eef0f1);
   cursor: not-allowed;

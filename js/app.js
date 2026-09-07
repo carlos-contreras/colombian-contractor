@@ -315,7 +315,7 @@ function setGovStatus(text) {
   els.govStatus.textContent = text;
 }
 
-async function onSave() {
+async function saveCurrentMonth() {
   const result = computeMonth(sources, params);
   await store.saveMonth(yearMonth, {
     yearMonth,
@@ -324,6 +324,10 @@ async function onSave() {
     result,
   });
   await renderHistory();
+}
+
+async function onSave() {
+  await saveCurrentMonth();
   showToast("Mes guardado");
 }
 
@@ -338,6 +342,8 @@ function showToast(message) {
 }
 
 async function onExportData() {
+  // Include the current unsaved form, including any note, in the backup.
+  await saveCurrentMonth();
   const payload = await store.exportAll();
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -360,6 +366,19 @@ async function onImportData(event) {
     const payload = JSON.parse(await file.text());
     await store.importAll(payload);
     trmCachedDates.clear();
+
+    // Open the latest imported month so restored notes are immediately visible.
+    const importedMonths = Array.isArray(payload.months)
+      ? payload.months
+          .filter((row) => row && typeof row.yearMonth === "string")
+          .map((row) => row.yearMonth)
+          .sort()
+      : [];
+    if (importedMonths.length > 0) {
+      yearMonth = importedMonths[importedMonths.length - 1];
+      els.year.value = yearMonth.slice(0, 4);
+      els.month.value = yearMonth.slice(5, 7);
+    }
     await loadPeriod({ resetSources: true });
     await renderHistory();
     showToast("Respaldo importado");
@@ -392,6 +411,16 @@ function onSourcesClick(event) {
   if (!article) return;
   const id = article.dataset.id;
   if (!id) return;
+  if (target.matches("[data-note-add]")) {
+    const source = sources.find((row) => row.id === id);
+    if (!source) return;
+    source.note = "";
+    renderSources();
+    renderResults();
+    const note = els.sources.querySelector(`[data-id="${id}"] [data-field="note"]`);
+    if (note instanceof HTMLTextAreaElement) note.focus();
+    return;
+  }
   if (target.matches("[data-delete]")) {
     if (!confirm("¿Eliminar esta fuente de ingreso?")) return;
     sources = sources.filter((row) => row.id !== id);
@@ -502,10 +531,11 @@ function onSourcesInput(event) {
   const article = target.closest("article");
   if (!article || !article.dataset.id) return;
   const source = sources.find((row) => row.id === article.dataset.id);
-  if (!source || !(target instanceof HTMLInputElement)) return;
+  if (!source || !(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) return;
 
   const field = target.dataset.field;
   if (field === "label") source.label = target.value;
+  if (field === "note") source.note = target.value;
   if (field === "amount") source.amount = parseCop(target.value);
   if (field === "factor") source.factor = Number(target.value) || 0;
   if (field === "costAmount") source.costAmount = parseCop(target.value);
@@ -710,6 +740,7 @@ function sourceArticle(source) {
           : ""
       }
     </div>
+    ${noteField(source)}
     ${
       usd
         ? `<p class="explain cop-hint">${copHint(source)}</p>
@@ -720,6 +751,20 @@ function sourceArticle(source) {
     ${capitalExplain(source)}
   `;
   return article;
+}
+
+/**
+ * @param {IncomeSource} source
+ * @returns {string}
+ */
+function noteField(source) {
+  if (source.note === undefined) {
+    return '<button type="button" class="secondary source-note-add" data-note-add>Agregar nota</button>';
+  }
+  return `<label class="source-note">
+    Nota
+    <textarea data-field="note" rows="3" placeholder="Detalles importantes sobre esta fuente...">${escapeHtml(source.note)}</textarea>
+  </label>`;
 }
 
 /**
