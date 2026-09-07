@@ -70,6 +70,9 @@ const els = {
   save: /** @type {HTMLButtonElement} */ (document.querySelector("#save-month")),
   copyPrevious: /** @type {HTMLButtonElement} */ (document.querySelector("#copy-previous")),
   history: /** @type {HTMLElement} */ (document.querySelector("#history")),
+  exportData: /** @type {HTMLButtonElement} */ (document.querySelector("#export-data")),
+  importData: /** @type {HTMLButtonElement} */ (document.querySelector("#import-data")),
+  importFile: /** @type {HTMLInputElement} */ (document.querySelector("#import-file")),
 };
 
 init();
@@ -88,9 +91,9 @@ async function init() {
 
   const resetBtn = document.querySelector("#reset-data");
   if (resetBtn) {
-    resetBtn.addEventListener("click", () => {
+    resetBtn.addEventListener("click", async () => {
       if (confirm("¿Limpiar todos los datos de esta sesión?")) {
-        store.clearAll();
+        await store.clearAll();
         trmCachedDates.clear();
         yearMonth = previousYearMonth();
         els.year.value = yearMonth.slice(0, 4);
@@ -122,6 +125,9 @@ async function init() {
 
   els.save.addEventListener("click", onSave);
   els.copyPrevious.addEventListener("click", onCopyPrevious);
+  els.exportData.addEventListener("click", onExportData);
+  els.importData.addEventListener("click", () => els.importFile.click());
+  els.importFile.addEventListener("change", onImportData);
   els.sources.addEventListener("click", onSourcesClick);
   els.sources.addEventListener("change", onSourcesChange);
   els.sources.addEventListener("input", onSourcesInput);
@@ -329,6 +335,38 @@ function showToast(message) {
   setTimeout(() => {
     toast.setAttribute("hidden", "");
   }, 2200);
+}
+
+async function onExportData() {
+  const payload = await store.exportAll();
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `colombian-contractor-respaldo-${new Date().toISOString().slice(0, 10)}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+  showToast("Respaldo exportado");
+}
+
+/** @param {Event} event */
+async function onImportData(event) {
+  const input = /** @type {HTMLInputElement} */ (event.target);
+  const file = input.files?.[0];
+  if (!file) return;
+  input.value = "";
+  if (!confirm("¿Reemplazar todos los datos actuales con este respaldo?")) return;
+  try {
+    const payload = JSON.parse(await file.text());
+    await store.importAll(payload);
+    trmCachedDates.clear();
+    await loadPeriod({ resetSources: true });
+    await renderHistory();
+    showToast("Respaldo importado");
+  } catch (error) {
+    console.error(error);
+    alert("No se pudo importar el respaldo. Verifica que sea un archivo JSON válido.");
+  }
 }
 
 async function onCopyPrevious() {

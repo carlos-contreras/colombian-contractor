@@ -163,7 +163,7 @@ Vanilla **ES modules** + **JSDoc**. Details and dependency rules: [ARCHITECTURE.
 colombian-contractor/
   README.md
   PLAN.md
-  TODOS.md            # deferred persistence (JSON archive, store API, SQLite, public)
+  TODOS.md            # deferred SQLite/public backend work
   ARCHITECTURE.md     # modules, types, store boundary
   package.json        # { "type": "module" }; node --test — no runtime deps
   test/*.test.js
@@ -176,7 +176,7 @@ colombian-contractor/
     trm.js            # TRM for a date or a whole month
     gov.js            # SMMLV decree table + statutory rates
     ugpp.js           # 40% constant + presunción de costos
-    store.js          # in-memory now; IndexedDB in Phase 2
+    store.js          # IndexedDB adapter + in-memory fallback; JSON archive API
     format.js         # COP / dates
 ```
 
@@ -212,11 +212,11 @@ colombian-contractor/
 
 ### Phase 2 — Persistence and history
 
-- `store.js` API + IndexedDB adapter (TODOS items 2–3 start here)
-- Save months
-- Duplicate previous month
-- JSON export/import (personal archive)
-- Year parameter presets (2025, 2026, …)
+- [x] `store.js` API + IndexedDB adapter
+- [x] Save months across browser refreshes
+- [x] Duplicate previous month
+- [x] JSON export/import (personal archive)
+- [x] Year parameter presets (2025, 2026, …)
 
 ### Phase 3 — Hardening
 
@@ -228,7 +228,7 @@ colombian-contractor/
 
 - User can enter ≥3 sources for a month and get a combined IBC in under a minute.
 - Changing SMMLV or the 40% factor updates results immediately.
-- Refreshing the browser restores the last month (once Phase 2 exists).
+- Refreshing the browser restores the last saved month.
 - Every number on screen can be traced to an input and a named rule.
 
 ## Persistence — comparison and recommendation

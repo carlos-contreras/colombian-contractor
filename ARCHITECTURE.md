@@ -1,6 +1,6 @@
 # ARCHITECTURE — Colombian Contractor
 
-How the app is structured. Product scope and phases stay in [PLAN.md](./PLAN.md); deferred persistence in [TODOS.md](./TODOS.md).
+How the app is structured. Product scope and completed persistence work stay in [PLAN.md](./PLAN.md); deferred backend work stays in [TODOS.md](./TODOS.md).
 
 **Decision:** vanilla **ES modules** + **JSDoc**. CSS: **Pico.css** (vendored) + a thin `css/style.css`. No bundler, no TypeScript compiler, no UI framework.
 
@@ -16,7 +16,7 @@ The work is a monthly calculator with a replaceable store, not a component tree.
 | Honorarios factor | `js/ugpp.js` | 40% constant or 1 − UGPP costos |
 | Year figures | `js/gov.js` | SMMLV table + statutory salud/pensión |
 | USD → COP | `js/trm.js` | Official TRM lookup + `usdToCopPesos` |
-| Persistence | `js/store.js` | In-memory now; IndexedDB in Phase 2 |
+| Persistence | `js/store.js` | IndexedDB adapter with in-memory fallback; JSON export/import |
 | COP / dates | `js/format.js` | None |
 | Month form + results | `js/app.js` | Low for v1 (one view + history) |
 | Look and form chrome | Pico.css + `css/style.css` | Pico is the base; we do not add Tailwind/Bootstrap |
@@ -243,11 +243,11 @@ Every figure shown in the UI must be traceable to an input and a named value on 
 
 ## `store.js` — persistence boundary
 
-v1 **scaffold** storage: **in-memory** (`Map`). Same API as Phase 2; IndexedDB is the next adapter. The rest of the app never sees the engine.
+Storage uses **IndexedDB** in browsers, with an in-memory fallback for environments without IndexedDB (such as the Node test runner). The rest of the app never sees the engine.
 
 Also caches **year params** and **TRM by date** so year/month changes do not refetch.
 
-Minimum API (Phase 2; implement the interface with the first IndexedDB code — [TODOS.md](./TODOS.md) item 3):
+Minimum store API:
 
 | Function | Role |
 | --- | --- |
@@ -261,7 +261,7 @@ Minimum API (Phase 2; implement the interface with the first IndexedDB code — 
 
 `yearMonth` is `'YYYY-MM'`.
 
-Phase 1 can keep state in memory (and lose it on refresh). Do not call IndexedDB from `app.js` as a shortcut around this API.
+The app calls this API for all persistence. Do not call IndexedDB from `app.js` as a shortcut around this API.
 
 ---
 
@@ -275,7 +275,7 @@ Single-page, two conceptual views (can be sections on one page):
 Behavior:
 
 - Changing sources or params re-runs `rules` and refreshes results immediately (Phase 1).
-- Save is explicit once `store` exists (Phase 2).
+- Save is explicit; IndexedDB persists saved months across refreshes.
 - No direct `indexedDB` / `localStorage` here.
 
 DOM: plain `document` APIs or small helpers in `app.js`. No Vue/React/Alpine.

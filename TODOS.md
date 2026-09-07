@@ -10,12 +10,12 @@ These items are the rest of the persistence recommendation. Do them when the tri
 
 IndexedDB dies with site data, another browser, or a new machine. A JSON file the owner keeps is the long-term record.
 
-**Trigger:** Phase 2 (persistence and history), as soon as months are saved.
+**Status:** Implemented. Import replaces all existing data.
 
-- [ ] `exportAll()` — download one JSON file (`parametersByYear` + all months)
-- [ ] `importAll()` — restore from that file (replace or merge; pick one and document it)
-- [ ] UI: export / import controls on the history view
-- [ ] Document backup habit in README (download after each month, optional git copy)
+- [x] `exportAll()` — download one JSON file (year parameters, months, TRMs)
+- [x] `importAll()` — restore from that file (replace)
+- [x] UI: export / import controls on the history view
+- [x] Document backup habit in README (download after saving important months)
 
 Not in this item: silent writes to a disk path, File System Access API, or splitting one file per year (add later only if a single file becomes annoying).
 
@@ -25,17 +25,17 @@ Not in this item: silent writes to a disk path, File System Access API, or split
 
 UI and `rules.js` must not call IndexedDB (or any future DB) directly. One adapter keeps a future SQLite/API swap from becoming a rewrite.
 
-**Trigger:** first persistence code (Phase 2). This is not optional later — implement it *with* IndexedDB.
+**Status:** Implemented.
 
-- [ ] `js/store.js` as the only persistence boundary
-- [ ] Minimum API:
+- [x] `js/store.js` as the only persistence boundary
+- [x] Minimum API:
   - `listMonths()`
   - `getMonth(yearMonth)`
   - `saveMonth(yearMonth, data)`
-  - `deleteMonth(yearMonth)` (if needed)
+  - `deleteMonth(yearMonth)`
   - `exportAll()` / `importAll()`
-- [ ] IndexedDB as the first implementation behind that API
-- [ ] No IndexedDB calls from `app.js`
+- [x] IndexedDB as the first implementation behind that API
+- [x] No IndexedDB calls from `app.js`
 
 ---
 

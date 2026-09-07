@@ -2,7 +2,7 @@
 
 A local web app to calculate **IBC (Ingreso Base de Cotización)** each month from all sources of income, so Colombian independent contractors can see what they should report and contribute for social security.
 
-Phase 1 scaffold: open the static page locally (see Run). Persistence is still in-memory until IndexedDB.
+Phase 2 persistence: open the static page locally (see Run). Saved months and year parameters use IndexedDB; JSON export/import provides portable backups.
 
 ## Goal
 
@@ -15,11 +15,11 @@ Answer, for a given month:
 
 ## Stack
 
-Vanilla **HTML**, **Pico.css** + `css/style.css`, and **JavaScript ES modules** with **JSDoc**. No backend, no JS framework, no bundler, no TypeScript compile. v1 working data: **IndexedDB**. USD honorarios are converted with the official **TRM** (`js/trm.js`) before IBC math in COP. How modules fit together: [ARCHITECTURE.md](./ARCHITECTURE.md). Later persistence (JSON backups, `store` API, SQLite, public backend) is listed in [TODOS.md](./TODOS.md).
+Vanilla **HTML**, **Pico.css** + `css/style.css`, and **JavaScript ES modules** with **JSDoc**. No backend, no JS framework, no bundler, no TypeScript compile. Working data: **IndexedDB**, with JSON export/import backups. USD honorarios are converted with the official **TRM** (`js/trm.js`) before IBC math in COP. How modules fit together: [ARCHITECTURE.md](./ARCHITECTURE.md). SQLite and a public backend remain deferred in [TODOS.md](./TODOS.md).
 
 ## Status
 
-Phase 1 scaffold (calculator UI + in-memory store). See [PLAN.md](./PLAN.md), [ARCHITECTURE.md](./ARCHITECTURE.md), and [TODOS.md](./TODOS.md).
+Phase 2 persistence (calculator UI + IndexedDB store + JSON backups). See [PLAN.md](./PLAN.md), [ARCHITECTURE.md](./ARCHITECTURE.md), and [TODOS.md](./TODOS.md).
 
 ## Run
 
@@ -39,7 +39,7 @@ Node’s built-in runner (no extra packages):
 node --test
 ```
 
-The same files can be served as a **GitHub Pages** site later (no bundler). IndexedDB will not follow you from localhost onto `*.github.io` — use JSON export/import. Details: [ARCHITECTURE.md](./ARCHITECTURE.md#github-pages-optional-deploy).
+The same files can be served as a **GitHub Pages** site later (no bundler). IndexedDB is origin-specific and will not follow you from localhost onto `*.github.io` or another browser — export a JSON backup and import it there. Download a backup after saving important months.
 
 ## Legal note
 
